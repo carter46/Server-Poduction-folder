@@ -35,6 +35,8 @@ function applyTransactionStatusBalanceDelta(PDO $pdo, $accountTable, $amount, $o
         'access_bank_account_settings',
         'wema_bank_account_settings',
         'polaris_bank_account_settings',
+        'stanbic_bank_account_settings',
+        'fidelity_bank_account_settings',
     ];
     if (!in_array($accountTable, $allowedTables, true)) {
         throw new Exception('Invalid account table');
