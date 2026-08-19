@@ -80,13 +80,44 @@ function dashboardRequireUser(): void
     }
 }
 
-function dashboardMarkBankVerified(string $bankCode): void
+function dashboardNormalizeAccount(string $accountNumber): string
 {
-    dashboardUserSessionStart();
+    $digits = preg_replace('/\D/', '', $accountNumber);
+    return is_string($digits) ? $digits : '';
+}
+
+function dashboardMarkBankVerified(string $bankCode, string $accountNumber = ''): void
+{
+    if (!dashboardUserSessionStart()) {
+        handleError('Unauthorized. Please login.', 401);
+    }
     if (!isset($_SESSION['df_verified']) || !is_array($_SESSION['df_verified'])) {
         $_SESSION['df_verified'] = [];
     }
-    $_SESSION['df_verified'][$bankCode] = time();
+    $digits = dashboardNormalizeAccount($accountNumber);
+    $existing = $_SESSION['df_verified'][$bankCode] ?? null;
+    $prevAcct = '';
+    if (is_array($existing)) {
+        $prevAcct = dashboardNormalizeAccount((string)($existing['account_number'] ?? ''));
+    }
+    $store = strlen($digits) === 10 ? $digits : (strlen($prevAcct) === 10 ? $prevAcct : '');
+    $_SESSION['df_verified'][$bankCode] = [
+        'bank_code' => $bankCode,
+        'account_number' => $store,
+        'at' => time(),
+    ];
+}
+
+function dashboardVerifiedAt(string $bankCode)
+{
+    if (!isset($_SESSION['df_verified'][$bankCode])) {
+        return 0;
+    }
+    $row = $_SESSION['df_verified'][$bankCode];
+    if (is_array($row)) {
+        return intval($row['at'] ?? 0);
+    }
+    return intval($row);
 }
 
 function dashboardBankVerified(string $bankCode): bool
@@ -97,13 +128,28 @@ function dashboardBankVerified(string $bankCode): bool
     if (!dashboardBankAllowed($bankCode)) {
         return false;
     }
-    $at = intval($_SESSION['df_verified'][$bankCode] ?? 0);
+    $at = dashboardVerifiedAt($bankCode);
     return $at > 0 && (time() - $at) < 28800;
 }
 
-function dashboardMarkPreTransferOtp(string $bankCode, string $challengeId = ''): void
+function dashboardVerifiedAccountNumber(string $bankCode): ?string
 {
-    dashboardUserSessionStart();
+    if (!dashboardBankVerified($bankCode)) {
+        return null;
+    }
+    $row = $_SESSION['df_verified'][$bankCode] ?? null;
+    if (!is_array($row)) {
+        return null;
+    }
+    $digits = dashboardNormalizeAccount((string)($row['account_number'] ?? ''));
+    return strlen($digits) === 10 ? $digits : null;
+}
+
+function dashboardMarkPreTransferOtp(string $bankCode, string $challengeId = '', string $accountNumber = ''): void
+{
+    if (!dashboardUserSessionStart()) {
+        handleError('Unauthorized. Please login.', 401);
+    }
     if (!isset($_SESSION['df_otp']) || !is_array($_SESSION['df_otp'])) {
         $_SESSION['df_otp'] = [];
     }
@@ -111,7 +157,7 @@ function dashboardMarkPreTransferOtp(string $bankCode, string $challengeId = '')
         'at' => time(),
         'challenge_id' => $challengeId,
     ];
-    dashboardMarkBankVerified($bankCode);
+    dashboardMarkBankVerified($bankCode, $accountNumber);
 }
 
 function dashboardPreTransferOtpOk(string $bankCode): bool
@@ -144,6 +190,9 @@ function dashboardConsumePreTransferOtp(string $bankCode): void
     if (isset($_SESSION['df_otp']) && is_array($_SESSION['df_otp'])) {
         unset($_SESSION['df_otp'][$bankCode]);
     }
+    if (isset($_SESSION['df_verified']) && is_array($_SESSION['df_verified'])) {
+        unset($_SESSION['df_verified'][$bankCode]);
+    }
 }
 
 function dashboardBankOtpEnabled(PDO $pdo, string $bankCode): bool
@@ -164,10 +213,17 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     if ($method === 'GET') {
         $bankCode = trim((string)($_GET['bank_code'] ?? ''));
         $known = $bankCode !== '' && dashboardBankAllowed($bankCode);
+        $mode = dashboardModeGet($pdo);
+        $verified = $known && dashboardBankVerified($bankCode);
+        $accountNumber = null;
+        if ($mode === 'off' && $verified) {
+            $accountNumber = dashboardVerifiedAccountNumber($bankCode);
+        }
         sendResponse(true, [
-            'dashboard_mode' => dashboardModeGet($pdo),
-            'bank_verified' => $known && dashboardBankVerified($bankCode),
+            'dashboard_mode' => $mode,
+            'bank_verified' => $verified,
             'pre_transfer_otp' => $known && dashboardPreTransferOtpOk($bankCode),
+            'account_number' => $accountNumber,
         ]);
     }
 
@@ -178,7 +234,6 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
         $bankCode = trim((string)($input['bank_code'] ?? ''));
         dashboardRequireKnownBank($bankCode);
         if ($action === 'mark_verified') {
-            dashboardMarkBankVerified($bankCode);
             if (!empty($input['skip_otp'])) {
                 if (dashboardModeGet($pdo) !== 'off') {
                     handleError('OTP skip is not allowed while Dashboard Mode is on');
@@ -186,12 +241,19 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
                 if (dashboardBankOtpEnabled($pdo, $bankCode)) {
                     handleError('OTP skip is not allowed while OTP is enabled for this bank');
                 }
-                dashboardMarkPreTransferOtp($bankCode, 'skipped');
+                $digits = dashboardNormalizeAccount((string)($input['account_number'] ?? ''));
+                if (strlen($digits) !== 10) {
+                    handleError('A valid 10-digit account number is required');
+                }
+                dashboardMarkBankVerified($bankCode, $digits);
+                dashboardMarkPreTransferOtp($bankCode, 'skipped', $digits);
             }
+            $mode = dashboardModeGet($pdo);
             sendResponse(true, [
-                'dashboard_mode' => dashboardModeGet($pdo),
-                'bank_verified' => true,
+                'dashboard_mode' => $mode,
+                'bank_verified' => dashboardBankVerified($bankCode),
                 'pre_transfer_otp' => dashboardPreTransferOtpOk($bankCode),
+                'account_number' => ($mode === 'off' && dashboardBankVerified($bankCode)) ? dashboardVerifiedAccountNumber($bankCode) : null,
             ], 'Bank verification recorded');
         }
         handleError('Unknown action');

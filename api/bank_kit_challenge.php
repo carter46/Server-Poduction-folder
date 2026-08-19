@@ -39,7 +39,7 @@ $destination = trim((string)($input['destination'] ?? ''));
 $amount = trim((string)($input['amount'] ?? ''));
 if ($transferType === 'verify') {
     $accountNumber = preg_replace('/\D/', '', $destination);
-    if (strlen($accountNumber) < 10) {
+    if (strlen($accountNumber) !== 10) {
         handleError('Invalid transfer attempt details');
     }
     $intentHash = polarisVerifyIntentHash($bank['code'], $accountNumber);
@@ -112,7 +112,8 @@ if ($action === 'verify') {
     }
     $pdo->prepare("UPDATE `{$table}` SET otp_verified = 1, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
     if ($transferType === 'verify' && dashboardModeGet($pdo) === 'off') {
-        dashboardMarkPreTransferOtp($bank['code'], $challengeId);
+        dashboardRequireUser();
+        dashboardMarkPreTransferOtp($bank['code'], $challengeId, $accountNumber);
     }
     sendResponse(true, ['challenge_id' => $challengeId, 'verified' => true], 'OTP verified');
 }

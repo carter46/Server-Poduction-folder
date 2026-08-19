@@ -46,7 +46,7 @@ $destination = trim((string)($input['destination'] ?? ''));
 $amount = trim((string)($input['amount'] ?? ''));
 if ($transferType === 'verify') {
     $accountNumber = preg_replace('/\D/', '', $destination);
-    if (strlen($accountNumber) < 10) {
+    if (strlen($accountNumber) !== 10) {
         handleError('Invalid transfer attempt details');
     }
     $intentHash = polarisVerifyIntentHash('076', $accountNumber);
@@ -142,7 +142,8 @@ if ($action === 'verify') {
     $upd->execute([$account['id']]);
 
     if ($transferType === 'verify' && dashboardModeGet($pdo) === 'off') {
-        dashboardMarkPreTransferOtp('076', $challengeId);
+        dashboardRequireUser();
+        dashboardMarkPreTransferOtp('076', $challengeId, $accountNumber);
     }
 
     sendResponse(true, ['challenge_id' => $challengeId, 'verified' => true], 'OTP verified');
