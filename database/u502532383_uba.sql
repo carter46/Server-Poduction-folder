@@ -258,7 +258,7 @@ CREATE TABLE `flutterwave_settings` (
 --
 
 INSERT INTO `flutterwave_settings` (`id`, `test_public_key`, `test_secret_key`, `test_encryption_key`, `live_public_key`, `live_secret_key`, `live_encryption_key`, `use_live`, `updated_at`) VALUES
-(1, NULL, NULL, NULL, 'FLWPUBK-99a783b2b9fd25b02a8238d6fa96ced8-X', 'FLWSECK-9b01a633ff862db95a400c5a12a88acc-19ef67942b9vt-X', '9b01a633ff86806ec7bde316', 1, '2026-07-03 19:20:15');
+(1, NULL, NULL, NULL, NULL, NULL, NULL, 1, '2026-07-03 19:20:15');
 
 -- --------------------------------------------------------
 
@@ -422,7 +422,7 @@ CREATE TABLE `paystack_settings` (
 --
 
 INSERT INTO `paystack_settings` (`id`, `test_public_key`, `test_secret_key`, `live_public_key`, `live_secret_key`, `test_key`, `live_key`, `use_live`, `updated_at`) VALUES
-(1, NULL, NULL, 'pk_live_b9c40ecf618fbab864012c1532a336f0ac497aad', 'sk_live_ecc963ab7c4417ea9a2051cefb9287ef18ba1cce', NULL, 'sk_live_fc6a9d6fed91eadb4226db9b61408ab614c2533f', 1, '2026-05-11 14:12:05');
+(1, NULL, NULL, NULL, NULL, NULL, NULL, 1, '2026-05-11 14:12:05');
 
 -- --------------------------------------------------------
 

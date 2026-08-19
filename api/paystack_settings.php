@@ -121,8 +121,7 @@ try {
         $stmt = $pdo->query("SELECT COUNT(*) as count FROM paystack_settings");
         $result = $stmt->fetch();
         if ($result['count'] == 0) {
-            // Insert default with current live secret key
-            $pdo->exec("INSERT INTO paystack_settings (live_secret_key, use_live) VALUES ('sk_live_fc6a9d6fed91eadb4226db9b61408ab614c2533f', 1)");
+            $pdo->exec("INSERT INTO paystack_settings (use_live) VALUES (0)");
         }
     }
 } catch (PDOException $e) {
@@ -158,7 +157,7 @@ switch ($method) {
                     $settings = $stmt->fetch();
                 } else {
                     // Initialize with default
-                    $pdo->exec("INSERT INTO paystack_settings (live_secret_key, use_live) VALUES ('sk_live_fc6a9d6fed91eadb4226db9b61408ab614c2533f', 1)");
+                    $pdo->exec("INSERT INTO paystack_settings (use_live) VALUES (0)");
                     $stmt = $pdo->query("SELECT test_public_key, test_secret_key, live_public_key, live_secret_key, use_live FROM paystack_settings ORDER BY id DESC LIMIT 1");
                     $settings = $stmt->fetch();
                 }

@@ -2,6 +2,12 @@
 deploy-upload-list.txt
 *.log
 
+# Server-only config — copy from config.example.php on the host
+api/config.php
+
+# Full phpMyAdmin dumps include live payment keys and account data
+database/u502532383_uba.sql
+
 # Secrets stay on the server, not in git
 api/secrets/*
 !api/secrets/.gitignore
