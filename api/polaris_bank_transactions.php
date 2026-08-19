@@ -5,9 +5,11 @@
 require_once 'config.php';
 require_once 'transaction_status_helper.php';
 require_once 'transaction_receipt_ids.php';
+require_once 'polaris_stanbic_schema.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
+ensurePolarisStanbicSchema($pdo);
 
 switch ($method) {
     case 'GET':

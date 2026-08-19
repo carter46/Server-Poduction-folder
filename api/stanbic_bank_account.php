@@ -3,9 +3,11 @@
  * Stanbic IBTC Bank Account Settings API
  */
 require_once 'config.php';
+require_once 'polaris_stanbic_schema.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
+ensurePolarisStanbicSchema($pdo);
 
 switch ($method) {
     case 'GET':
