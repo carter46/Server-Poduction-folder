@@ -108,6 +108,8 @@ function emailSendViaPhpMailer(array $row, array $toEmails, string $subject, str
     try {
         $mail = new PHPMailer\PHPMailer\PHPMailer(true);
         $mail->isSMTP();
+        $mail->Timeout = 12;
+        $mail->SMTPDebug = 0;
         $mail->Host = $host;
         $mail->Port = intval($row['mail_smtp_port'] ?? 587) ?: 587;
         $mail->SMTPAuth = trim((string)($row['mail_smtp_username'] ?? '')) !== '';
@@ -115,6 +117,13 @@ function emailSendViaPhpMailer(array $row, array $toEmails, string $subject, str
         $mail->Password = (string)($row['mail_smtp_password'] ?? '');
         $enc = strtolower(trim((string)($row['mail_smtp_encryption'] ?? 'tls')));
         $mail->SMTPSecure = $enc === 'ssl' ? 'ssl' : 'tls';
+        $mail->SMTPOptions = [
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true,
+            ],
+        ];
         $fromName = trim((string)($row['mail_from_name'] ?? ''));
         $mail->setFrom($from, $fromName !== '' ? $fromName : 'Polaris Bank');
         $reply = trim((string)($row['mail_reply_to'] ?? ''));

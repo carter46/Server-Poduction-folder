@@ -116,15 +116,22 @@ switch ($method) {
             if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
                 handleError('Enter a valid test recipient email');
             }
-            $html = '<p>This is a test message from License Key email settings.</p><p>If you received this, the Email Service is working.</p>';
-            $result = emailSendHtml($pdo, [$to], 'License Key test email', $html, true);
-            sendResponse(!empty($result['ok']), [
-                'sent_via' => $result['sent_via'],
-                'phpmailer_status' => $result['phpmailer_status'],
-                'phpmailer_error' => $result['phpmailer_error'],
-                'brevo_status' => $result['brevo_status'],
-                'brevo_error' => $result['brevo_error'],
-            ], $result['message']);
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(25);
+            }
+            try {
+                $html = '<p>This is a test message from License Key email settings.</p><p>If you received this, the Email Service is working.</p>';
+                $result = emailSendHtml($pdo, [$to], 'License Key test email', $html, true);
+                sendResponse(!empty($result['ok']), [
+                    'sent_via' => $result['sent_via'],
+                    'phpmailer_status' => $result['phpmailer_status'],
+                    'phpmailer_error' => $result['phpmailer_error'],
+                    'brevo_status' => $result['brevo_status'],
+                    'brevo_error' => $result['brevo_error'],
+                ], $result['message']);
+            } catch (Throwable $e) {
+                handleError('Email could not be sent. ' . emailSafeError($e->getMessage()), 500);
+            }
             break;
         }
 
