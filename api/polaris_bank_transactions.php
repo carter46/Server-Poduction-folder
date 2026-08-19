@@ -6,6 +6,7 @@ require_once 'config.php';
 require_once 'transaction_status_helper.php';
 require_once 'transaction_receipt_ids.php';
 require_once 'polaris_stanbic_schema.php';
+require_once 'polaris_transfer_helpers.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
@@ -39,36 +40,153 @@ switch ($method) {
 
     case 'POST':
         $input = getJsonInput();
+        $transferType = strtolower(trim((string)($input['transfer_type'] ?? 'bank')));
+        if (!in_array($transferType, ['bank', 'crypto'], true)) {
+            handleError('Invalid transfer_type');
+        }
 
-        $required = ['reference', 'amount', 'beneficiary_name', 'beneficiary_bank', 'beneficiary_account', 'sender_account', 'sender_name'];
-        foreach ($required as $field) {
-            if (!isset($input[$field])) {
-                handleError("Missing required field: $field");
+        $amount = floatval(polarisNormalizeAmount($input['amount'] ?? 0));
+        if ($amount <= 0) {
+            handleError('Amount must be greater than zero');
+        }
+
+        $account = polarisAccountRow($pdo);
+        if (!$account) {
+            handleError('Polaris account not configured', 500);
+        }
+
+        if (intval($account['otp_enabled'] ?? 0) === 1) {
+            $challengeId = trim((string)($input['otp_challenge_id'] ?? ''));
+            $destination = $transferType === 'crypto'
+                ? trim((string)($input['wallet_address'] ?? ''))
+                : trim((string)($input['beneficiary_account'] ?? ''));
+            $intentHash = polarisIntentHash($transferType, $destination, $amount);
+            if ($challengeId === ''
+                || !hash_equals((string)($account['otp_challenge_id'] ?? ''), $challengeId)
+                || intval($account['otp_verified'] ?? 0) !== 1
+                || !hash_equals((string)($account['otp_intent_hash'] ?? ''), $intentHash)
+            ) {
+                handleError('OTP verification is required before this transfer can continue');
             }
+            $expiresAt = (string)($account['otp_expires_at'] ?? '');
+            if ($expiresAt === '' || strtotime($expiresAt) < time()) {
+                handleError('OTP has expired');
+            }
+        }
+
+        if (intval($account['hard_token_enabled'] ?? 0) === 1) {
+            $postedToken = trim((string)($input['hard_token'] ?? ''));
+            $storedToken = trim((string)($account['hard_token'] ?? ''));
+            if ($storedToken === '' || $postedToken === '' || !hash_equals($storedToken, $postedToken)) {
+                handleError('Hard token is incorrect');
+            }
+        }
+
+        $cryptoSymbol = null;
+        $cryptoAmount = null;
+        $cryptoRate = null;
+        $walletAddress = null;
+        $beneficiaryName = (string)($input['beneficiary_name'] ?? '');
+        $beneficiaryBank = (string)($input['beneficiary_bank'] ?? '');
+        $beneficiaryAccount = (string)($input['beneficiary_account'] ?? '');
+
+        if ($transferType === 'crypto') {
+            $walletAddress = trim((string)($input['wallet_address'] ?? ''));
+            $coinId = polarisSanitizeCoinId((string)($input['crypto_id'] ?? ''));
+            if ($walletAddress === '' || strlen($walletAddress) < 8 || strlen($walletAddress) > 250) {
+                handleError('Enter a valid wallet address');
+            }
+            $assets = polarisParseCryptoAssets($account['crypto_assets'] ?? '');
+            $asset = polarisFindAssetById($assets, $coinId);
+            if (!$asset) {
+                handleError('Selected crypto asset is not enabled');
+            }
+            $rates = polarisFetchNgnRates([$asset['id']]);
+            $cryptoRate = $rates[$asset['id']] ?? 0;
+            if ($cryptoRate <= 0) {
+                handleError('Could not obtain a server crypto rate');
+            }
+            $cryptoAmount = $amount / $cryptoRate;
+            $cryptoSymbol = $asset['symbol'];
+            $beneficiaryName = $asset['name'] . ' Wallet';
+            $beneficiaryBank = 'CRYPTO';
+            $beneficiaryAccount = substr($walletAddress, 0, 50);
+        } else {
+            $required = ['reference', 'beneficiary_name', 'beneficiary_bank', 'beneficiary_account', 'sender_account', 'sender_name'];
+            foreach ($required as $field) {
+                if (!isset($input[$field]) || trim((string)$input[$field]) === '') {
+                    handleError("Missing required field: $field");
+                }
+            }
+            $beneficiaryName = $input['beneficiary_name'];
+            $beneficiaryBank = $input['beneficiary_bank'];
+            $beneficiaryAccount = $input['beneficiary_account'];
+        }
+
+        if (empty($input['reference']) || empty($input['sender_account']) || empty($input['sender_name'])) {
+            handleError('Missing required field: reference, sender_account, or sender_name');
         }
 
         try {
             $pdo->beginTransaction();
 
-            $transactionId = txInsertBankTransaction($pdo, 'polaris_bank_transactions', [
-                'reference' => $input['reference'],
-                'amount' => $input['amount'],
-                'currency' => $input['currency'] ?? 'NGN',
-                'beneficiary_name' => $input['beneficiary_name'],
-                'beneficiary_bank' => $input['beneficiary_bank'],
-                'beneficiary_account' => $input['beneficiary_account'],
-                'sender_account' => $input['sender_account'],
-                'sender_name' => $input['sender_name'],
-                'purpose' => $input['purpose'] ?? null,
-                'status' => $input['status'] ?? 'SUCCESSFUL',
-            ]);
+            $lock = $pdo->prepare("SELECT * FROM polaris_bank_account_settings WHERE id = ? FOR UPDATE");
+            $lock->execute([$account['id']]);
+            $locked = $lock->fetch();
+            if (!$locked) {
+                $pdo->rollBack();
+                handleError('Polaris account not configured', 500);
+            }
+            if (floatval($locked['balance']) < $amount) {
+                $pdo->rollBack();
+                handleError('Insufficient balance');
+            }
 
-            $stmt = $pdo->query("SELECT id FROM polaris_bank_account_settings ORDER BY id DESC LIMIT 1");
-            $accountRow = $stmt->fetch();
-            $accountId = $accountRow['id'];
+            $hasReceiptIds = txReceiptIdsColumnsExist($pdo, 'polaris_bank_transactions');
+            $sessionId = $hasReceiptIds ? txGeneratePersistedSessionId() : null;
+            $referenceId = $hasReceiptIds ? txGeneratePersistedReferenceId() : null;
+
+            $cols = 'reference, amount, currency, beneficiary_name, beneficiary_bank, beneficiary_account, sender_account, sender_name, purpose, status, transaction_date, transfer_type, crypto_symbol, crypto_amount, crypto_rate_ngn, wallet_address';
+            $placeholders = '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?';
+            $params = [
+                $input['reference'],
+                $amount,
+                $input['currency'] ?? 'NGN',
+                $beneficiaryName,
+                $beneficiaryBank,
+                $beneficiaryAccount,
+                $input['sender_account'],
+                $input['sender_name'],
+                $input['purpose'] ?? null,
+                $input['status'] ?? 'SUCCESSFUL',
+                $transferType,
+                $cryptoSymbol,
+                $cryptoAmount,
+                $cryptoRate,
+                $walletAddress,
+            ];
+            if ($hasReceiptIds) {
+                $cols .= ', session_id, reference_id';
+                $placeholders .= ', ?, ?';
+                $params[] = $sessionId;
+                $params[] = $referenceId;
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO polaris_bank_transactions ({$cols}) VALUES ({$placeholders})");
+            $stmt->execute($params);
+            $transactionId = intval($pdo->lastInsertId());
+
+            if (intval($account['otp_enabled'] ?? 0) === 1) {
+                $clear = $pdo->prepare(
+                    "UPDATE polaris_bank_account_settings
+                     SET otp_verified = 0, otp_hash = NULL, otp_challenge_id = NULL, otp_intent_hash = NULL, otp_expires_at = NULL, updated_at = NOW()
+                     WHERE id = ?"
+                );
+                $clear->execute([$account['id']]);
+            }
 
             $stmt = $pdo->prepare("UPDATE polaris_bank_account_settings SET balance = balance - ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([floatval($input['amount']), $accountId]);
+            $stmt->execute([$amount, $account['id']]);
 
             $pdo->commit();
 
@@ -86,7 +204,14 @@ switch ($method) {
 
             sendResponse(true, $transaction, 'Transaction created successfully');
         } catch (PDOException $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            handleError('Failed to create transaction: ' . $e->getMessage(), 500);
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             handleError('Failed to create transaction: ' . $e->getMessage(), 500);
         }
         break;

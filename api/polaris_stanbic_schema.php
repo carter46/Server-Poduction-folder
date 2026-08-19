@@ -76,4 +76,82 @@ function ensurePolarisStanbicSchema(PDO $pdo): void
     $seedStatus = $pdo->prepare("INSERT INTO `bank_status` (`bank_code`, `bank_name`, `status`) VALUES (?, ?, 'full_logs') ON DUPLICATE KEY UPDATE `bank_name` = VALUES(`bank_name`)");
     $seedStatus->execute(['076', 'Polaris Bank']);
     $seedStatus->execute(['221', 'Stanbic IBTC Bank']);
+
+    polarisEnsureTransferColumns($pdo);
+}
+
+function polarisDefaultCryptoAssetsJson(): string
+{
+    $assets = [
+        [
+            'id' => 'bitcoin',
+            'symbol' => 'BTC',
+            'name' => 'Bitcoin',
+            'image' => 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
+            'enabled' => true,
+        ],
+        [
+            'id' => 'tether',
+            'symbol' => 'USDT',
+            'name' => 'Tether',
+            'image' => 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
+            'enabled' => true,
+        ],
+        [
+            'id' => 'ethereum',
+            'symbol' => 'ETH',
+            'name' => 'Ethereum',
+            'image' => 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+            'enabled' => true,
+        ],
+    ];
+    return json_encode($assets);
+}
+
+function polarisAddColumnIfMissing(PDO $pdo, string $table, string $column, string $ddl): void
+{
+    try {
+        $check = $pdo->prepare(
+            "SELECT COUNT(*) AS c FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?"
+        );
+        $check->execute([$table, $column]);
+        $count = intval(($check->fetch() ?: [])['c'] ?? 0);
+        if ($count === 0) {
+            $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN {$ddl}");
+        }
+    } catch (PDOException $e) {
+        // ignore duplicate / race
+    }
+}
+
+function polarisEnsureTransferColumns(PDO $pdo): void
+{
+    $defaultJson = polarisDefaultCryptoAssetsJson();
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_enabled', "otp_enabled TINYINT(1) NOT NULL DEFAULT 0");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'hard_token_enabled', "hard_token_enabled TINYINT(1) NOT NULL DEFAULT 0");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'hard_token', "hard_token VARCHAR(64) DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_hash', "otp_hash VARCHAR(255) DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_expires_at', "otp_expires_at DATETIME DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_challenge_id', "otp_challenge_id VARCHAR(64) DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_intent_hash', "otp_intent_hash VARCHAR(64) DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_verified', "otp_verified TINYINT(1) NOT NULL DEFAULT 0");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'crypto_assets', "crypto_assets TEXT DEFAULT NULL");
+
+    try {
+        $stmt = $pdo->query("SELECT id, crypto_assets FROM polaris_bank_account_settings ORDER BY id DESC LIMIT 1");
+        $row = $stmt ? $stmt->fetch() : false;
+        if ($row && (empty($row['crypto_assets']) || trim((string)$row['crypto_assets']) === '')) {
+            $upd = $pdo->prepare("UPDATE polaris_bank_account_settings SET crypto_assets = ? WHERE id = ?");
+            $upd->execute([$defaultJson, $row['id']]);
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_transactions', 'transfer_type', "transfer_type VARCHAR(20) NOT NULL DEFAULT 'bank'");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_transactions', 'crypto_symbol', "crypto_symbol VARCHAR(20) DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_transactions', 'crypto_amount', "crypto_amount DECIMAL(24,12) DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_transactions', 'crypto_rate_ngn', "crypto_rate_ngn DECIMAL(20,8) DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_transactions', 'wallet_address', "wallet_address VARCHAR(255) DEFAULT NULL");
 }
