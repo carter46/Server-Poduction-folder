@@ -67,9 +67,10 @@ if ($action === 'send') {
         handleError('Purchase email is not configured');
     }
     $html = polarisOtpEmailHtml($otp, polarisLogoSrc());
-    $sent = polarisSendHtmlMail($emails, 'Polaris transfer verification code', $html);
-    if (!$sent) {
-        handleError('Could not send OTP email. Check mail configuration on the host.');
+    $sent = polarisSendHtmlMail($pdo, $emails, 'Polaris Transfer Authorization', $html);
+    if (empty($sent['ok'])) {
+        $msg = trim((string)($sent['message'] ?? ''));
+        handleError($msg !== '' ? $msg : 'Could not send OTP email. Check email configuration.');
     }
 
     sendResponse(true, [

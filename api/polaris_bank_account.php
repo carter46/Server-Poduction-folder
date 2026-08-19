@@ -63,7 +63,7 @@ switch ($method) {
             if (!$account) {
                 handleError('Polaris account not configured', 500);
             }
-            $token = bin2hex(random_bytes(32));
+            $token = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             $stmt = $pdo->prepare("UPDATE polaris_bank_account_settings SET hard_token = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$token, $account['id']]);
             $account = polarisAccountRow($pdo);

@@ -5,6 +5,7 @@
  */
 
 require_once 'config.php';
+require_once 'email_service.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
@@ -39,7 +40,25 @@ function ensureLicenseSettingsSchemaAdmin(PDO $pdo) {
     }
 }
 
+function licenseValidEmailList(string $raw): bool
+{
+    $parts = preg_split('/[;,]+/', $raw) ?: [];
+    $found = false;
+    foreach ($parts as $part) {
+        $email = trim($part);
+        if ($email === '') {
+            continue;
+        }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+        $found = true;
+    }
+    return $found;
+}
+
 function fetchLicenseSettingsRow(PDO $pdo) {
+    emailEnsureMailColumns($pdo);
     $stmt = $pdo->prepare("SELECT id, purchase_email, renewal_gate, software_activated, normal_delay_seconds, renewal_delay_seconds, expected_signature, updated_at FROM license_settings WHERE id = 1");
     $stmt->execute();
     $settings = $stmt->fetch();
@@ -50,7 +69,10 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         $settings = $stmt->fetch();
     }
 
-    return [
+    $mailRow = emailLoadMailRow($pdo);
+    $mail = $mailRow ? emailPublicMailFlags($mailRow) : [];
+
+    return array_merge([
         'id' => (int)$settings['id'],
         'purchase_email' => $settings['purchase_email'] ?: 'support@ubadashboard.com',
         'renewal_gate' => $settings['renewal_gate'] ?: 'off',
@@ -59,7 +81,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'renewal_delay_seconds' => (int)($settings['renewal_delay_seconds'] ?? 25),
         'expected_signature' => $settings['expected_signature'] ?: 'UBA-RENEWAL-SIG-A8829F0D11D992A',
         'updated_at' => $settings['updated_at'] ?? date('Y-m-d H:i:s'),
-    ];
+    ], $mail);
 }
 
 ensureLicenseSettingsSchemaAdmin($pdo);
@@ -88,6 +110,23 @@ switch ($method) {
     case 'POST':
         $input = getJsonInput() ?: [];
         $action = $input['action'] ?? 'generate';
+
+        if ($action === 'send_test_email') {
+            $to = trim((string)($input['test_recipient'] ?? ''));
+            if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                handleError('Enter a valid test recipient email');
+            }
+            $html = '<p>This is a test message from License Key email settings.</p><p>If you received this, the Email Service is working.</p>';
+            $result = emailSendHtml($pdo, [$to], 'License Key test email', $html, true);
+            sendResponse(!empty($result['ok']), [
+                'sent_via' => $result['sent_via'],
+                'phpmailer_status' => $result['phpmailer_status'],
+                'phpmailer_error' => $result['phpmailer_error'],
+                'brevo_status' => $result['brevo_status'],
+                'brevo_error' => $result['brevo_error'],
+            ], $result['message']);
+            break;
+        }
 
         if ($action === 'reset_activation') {
             try {
@@ -133,13 +172,26 @@ switch ($method) {
             || isset($input['renewal_gate'])
             || isset($input['normal_delay_seconds'])
             || isset($input['renewal_delay_seconds'])
-            || isset($input['expected_signature']);
+            || isset($input['expected_signature'])
+            || isset($input['mail_phpmailer_enabled'])
+            || isset($input['mail_smtp_host'])
+            || isset($input['mail_smtp_port'])
+            || isset($input['mail_smtp_username'])
+            || isset($input['mail_smtp_password'])
+            || isset($input['mail_smtp_encryption'])
+            || isset($input['mail_from_email'])
+            || isset($input['mail_from_name'])
+            || isset($input['mail_reply_to'])
+            || isset($input['mail_brevo_enabled'])
+            || isset($input['mail_brevo_api_key'])
+            || isset($input['mail_brevo_sender_email'])
+            || isset($input['mail_brevo_sender_name']);
 
         if (!$hasAny) {
             handleError('No update data provided');
         }
 
-        if (isset($input['purchase_email']) && !filter_var($input['purchase_email'], FILTER_VALIDATE_EMAIL)) {
+        if (isset($input['purchase_email']) && !licenseValidEmailList((string)$input['purchase_email'])) {
             handleError('Invalid email format');
         }
 
@@ -161,8 +213,27 @@ switch ($method) {
             }
         }
 
+        foreach (['mail_from_email', 'mail_brevo_sender_email', 'mail_reply_to'] as $emailField) {
+            if (!isset($input[$emailField])) {
+                continue;
+            }
+            $val = trim((string)$input[$emailField]);
+            if ($val !== '' && !filter_var($val, FILTER_VALIDATE_EMAIL)) {
+                handleError('Invalid ' . $emailField);
+            }
+        }
+
+        if (isset($input['mail_smtp_encryption'])) {
+            $enc = strtolower(trim((string)$input['mail_smtp_encryption']));
+            if (!in_array($enc, ['tls', 'ssl'], true)) {
+                handleError('Encryption must be tls or ssl');
+            }
+        }
+
         try {
+            emailEnsureMailColumns($pdo);
             $current = fetchLicenseSettingsRow($pdo);
+            $row = emailLoadMailRow($pdo) ?: [];
 
             $purchaseEmail = isset($input['purchase_email']) ? $input['purchase_email'] : $current['purchase_email'];
             $renewalGate = isset($input['renewal_gate']) ? $input['renewal_gate'] : $current['renewal_gate'];
@@ -172,15 +243,71 @@ switch ($method) {
                 ? trim($input['expected_signature'])
                 : $current['expected_signature'];
 
+            $phpOn = isset($input['mail_phpmailer_enabled']) ? ($input['mail_phpmailer_enabled'] ? 1 : 0) : intval($row['mail_phpmailer_enabled'] ?? 0);
+            $brevoOn = isset($input['mail_brevo_enabled']) ? ($input['mail_brevo_enabled'] ? 1 : 0) : intval($row['mail_brevo_enabled'] ?? 0);
+            $smtpHost = isset($input['mail_smtp_host']) ? trim((string)$input['mail_smtp_host']) : (string)($row['mail_smtp_host'] ?? '');
+            $smtpPort = isset($input['mail_smtp_port']) ? intval($input['mail_smtp_port']) : intval($row['mail_smtp_port'] ?? 587);
+            if ($smtpPort < 1 || $smtpPort > 65535) {
+                handleError('SMTP port is invalid');
+            }
+            $smtpUser = isset($input['mail_smtp_username']) ? trim((string)$input['mail_smtp_username']) : (string)($row['mail_smtp_username'] ?? '');
+            $smtpEnc = isset($input['mail_smtp_encryption']) ? strtolower(trim((string)$input['mail_smtp_encryption'])) : (string)($row['mail_smtp_encryption'] ?? 'tls');
+            $fromEmail = isset($input['mail_from_email']) ? trim((string)$input['mail_from_email']) : (string)($row['mail_from_email'] ?? '');
+            $fromName = isset($input['mail_from_name']) ? trim((string)$input['mail_from_name']) : (string)($row['mail_from_name'] ?? '');
+            $replyTo = isset($input['mail_reply_to']) ? trim((string)$input['mail_reply_to']) : (string)($row['mail_reply_to'] ?? '');
+            $brevoSenderEmail = isset($input['mail_brevo_sender_email']) ? trim((string)$input['mail_brevo_sender_email']) : (string)($row['mail_brevo_sender_email'] ?? '');
+            $brevoSenderName = isset($input['mail_brevo_sender_name']) ? trim((string)$input['mail_brevo_sender_name']) : (string)($row['mail_brevo_sender_name'] ?? '');
+
+            $smtpPassword = (string)($row['mail_smtp_password'] ?? '');
+            if (isset($input['mail_smtp_password']) && trim((string)$input['mail_smtp_password']) !== '') {
+                $smtpPassword = (string)$input['mail_smtp_password'];
+            }
+            $brevoKey = (string)($row['mail_brevo_api_key'] ?? '');
+            if (isset($input['mail_brevo_api_key']) && trim((string)$input['mail_brevo_api_key']) !== '') {
+                $brevoKey = (string)$input['mail_brevo_api_key'];
+            }
+
             $stmt = $pdo->prepare("UPDATE license_settings SET
                 purchase_email = ?,
                 renewal_gate = ?,
                 normal_delay_seconds = ?,
                 renewal_delay_seconds = ?,
                 expected_signature = ?,
+                mail_phpmailer_enabled = ?,
+                mail_smtp_host = ?,
+                mail_smtp_port = ?,
+                mail_smtp_username = ?,
+                mail_smtp_password = ?,
+                mail_smtp_encryption = ?,
+                mail_from_email = ?,
+                mail_from_name = ?,
+                mail_reply_to = ?,
+                mail_brevo_enabled = ?,
+                mail_brevo_api_key = ?,
+                mail_brevo_sender_email = ?,
+                mail_brevo_sender_name = ?,
                 updated_at = NOW()
                 WHERE id = 1");
-            $stmt->execute([$purchaseEmail, $renewalGate, $normalDelay, $renewalDelay, $expectedSignature]);
+            $stmt->execute([
+                $purchaseEmail,
+                $renewalGate,
+                $normalDelay,
+                $renewalDelay,
+                $expectedSignature,
+                $phpOn,
+                $smtpHost !== '' ? $smtpHost : null,
+                $smtpPort,
+                $smtpUser !== '' ? $smtpUser : null,
+                $smtpPassword !== '' ? $smtpPassword : null,
+                $smtpEnc,
+                $fromEmail !== '' ? $fromEmail : null,
+                $fromName !== '' ? $fromName : null,
+                $replyTo !== '' ? $replyTo : null,
+                $brevoOn,
+                $brevoKey !== '' ? $brevoKey : null,
+                $brevoSenderEmail !== '' ? $brevoSenderEmail : null,
+                $brevoSenderName !== '' ? $brevoSenderName : null,
+            ]);
 
             $settings = fetchLicenseSettingsRow($pdo);
             sendResponse(true, $settings, 'License settings updated successfully');

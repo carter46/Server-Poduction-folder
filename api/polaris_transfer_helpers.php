@@ -150,8 +150,8 @@ function polarisOtpEmailHtml(string $otp, string $logoSrc): string
 <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
 <tr><td style="background:#ffffff;padding:20px 24px;border-bottom:4px solid #5B2C8A;">' . $logoBlock . '</td></tr>
 <tr><td style="padding:28px 24px 12px;color:#191c1d;">
-<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#5B2C8A;">Transfer verification</p>
-<p style="margin:0 0 16px;font-size:14px;color:#4A3A5C;line-height:1.5;">Use this one-time code to confirm your simulated Polaris transfer. Do not share it with anyone.</p>
+<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#5B2C8A;">Transfer Authorization</p>
+<p style="margin:0 0 16px;font-size:14px;color:#4A3A5C;line-height:1.5;">Use this one-time code to authorize your simulated Polaris transfer. Do not share it with anyone.</p>
 <div style="text-align:center;margin:24px 0;">
 <span style="display:inline-block;letter-spacing:8px;font-size:28px;font-weight:700;color:#5B2C8A;background:#F4F4F4;padding:14px 22px;border-radius:8px;">' . $otpEsc . '</span>
 </div>
@@ -178,21 +178,10 @@ function polarisLogoSrc(): string
     return '';
 }
 
-function polarisSendHtmlMail(array $toEmails, string $subject, string $html): bool
+function polarisSendHtmlMail(PDO $pdo, array $toEmails, string $subject, string $html): array
 {
-    if (empty($toEmails)) {
-        return false;
-    }
-    $headers = [];
-    $headers[] = 'MIME-Version: 1.0';
-    $headers[] = 'Content-type: text/html; charset=UTF-8';
-    $headers[] = 'From: Polaris Bank <noreply@polarisbank.com>';
-    $ok = false;
-    foreach ($toEmails as $to) {
-        $sent = @mail($to, $subject, $html, implode("\r\n", $headers));
-        $ok = $ok || $sent;
-    }
-    return $ok;
+    require_once __DIR__ . '/email_service.php';
+    return emailSendHtml($pdo, $toEmails, $subject, $html, false);
 }
 
 function polarisAccountRow(PDO $pdo)
