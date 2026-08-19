@@ -78,6 +78,14 @@ switch ($method) {
                 $updates[] = 'hard_token_enabled = ?';
                 $params[] = $input['hard_token_enabled'] ? 1 : 0;
             }
+            if (isset($input['default_transfer_status'])) {
+                $status = strtoupper(trim((string)$input['default_transfer_status']));
+                if (!in_array($status, ['SUCCESSFUL', 'PENDING', 'FAILED'], true)) {
+                    handleError('Invalid default_transfer_status');
+                }
+                $updates[] = 'default_transfer_status = ?';
+                $params[] = $status;
+            }
             if (isset($input['crypto_assets'])) {
                 if (!is_array($input['crypto_assets'])) {
                     handleError('crypto_assets must be a list');

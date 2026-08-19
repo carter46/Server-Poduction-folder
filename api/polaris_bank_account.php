@@ -19,6 +19,9 @@ function polarisPublicAccountPayload(array $account, bool $includeToken): array
         'balance' => floatval($account['balance']),
         'otp_enabled' => intval($account['otp_enabled'] ?? 0) === 1,
         'hard_token_enabled' => intval($account['hard_token_enabled'] ?? 0) === 1,
+        'default_transfer_status' => in_array(strtoupper(trim((string)($account['default_transfer_status'] ?? 'SUCCESSFUL'))), ['SUCCESSFUL', 'PENDING', 'FAILED'], true)
+            ? strtoupper(trim((string)$account['default_transfer_status']))
+            : 'SUCCESSFUL',
         'crypto_assets' => $assets,
     ];
     if ($includeToken) {
@@ -116,6 +119,15 @@ switch ($method) {
             if (isset($input['hard_token_enabled'])) {
                 $updates[] = "hard_token_enabled = ?";
                 $params[] = $input['hard_token_enabled'] ? 1 : 0;
+            }
+
+            if (isset($input['default_transfer_status'])) {
+                $status = strtoupper(trim((string)$input['default_transfer_status']));
+                if (!in_array($status, ['SUCCESSFUL', 'PENDING', 'FAILED'], true)) {
+                    handleError('Invalid default_transfer_status');
+                }
+                $updates[] = "default_transfer_status = ?";
+                $params[] = $status;
             }
 
             if (isset($input['crypto_assets'])) {

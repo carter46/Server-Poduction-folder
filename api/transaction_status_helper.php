@@ -48,7 +48,7 @@ function applyTransactionStatusBalanceDelta(PDO $pdo, $accountTable, $amount, $o
         return 0.0;
     }
 
-    $stmt = $pdo->query("SELECT id FROM {$accountTable} ORDER BY id DESC LIMIT 1");
+    $stmt = $pdo->query("SELECT id FROM {$accountTable} ORDER BY id DESC LIMIT 1 FOR UPDATE");
     $accountRow = $stmt->fetch();
     if (!$accountRow) {
         throw new Exception('Account settings not found');

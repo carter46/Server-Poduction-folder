@@ -157,6 +157,7 @@ function bankKitEnsure(PDO $pdo): void
         polarisAddColumnIfMissing($pdo, $acc, 'otp_intent_hash', 'otp_intent_hash VARCHAR(64) DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $acc, 'otp_verified', 'otp_verified TINYINT(1) NOT NULL DEFAULT 0');
         polarisAddColumnIfMissing($pdo, $acc, 'crypto_assets', 'crypto_assets TEXT DEFAULT NULL');
+        polarisAddColumnIfMissing($pdo, $acc, 'default_transfer_status', "default_transfer_status ENUM('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'");
         polarisAddColumnIfMissing($pdo, $tx, 'transfer_type', "transfer_type VARCHAR(20) NOT NULL DEFAULT 'bank'");
         polarisAddColumnIfMissing($pdo, $tx, 'crypto_symbol', 'crypto_symbol VARCHAR(20) DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $tx, 'crypto_amount', 'crypto_amount DECIMAL(24,12) DEFAULT NULL');
@@ -190,6 +191,9 @@ function bankKitPublicPayload(array $account, bool $includeToken): array
         'balance' => floatval($account['balance']),
         'otp_enabled' => intval($account['otp_enabled'] ?? 0) === 1,
         'hard_token_enabled' => intval($account['hard_token_enabled'] ?? 0) === 1,
+        'default_transfer_status' => in_array(strtoupper(trim((string)($account['default_transfer_status'] ?? 'SUCCESSFUL'))), ['SUCCESSFUL', 'PENDING', 'FAILED'], true)
+            ? strtoupper(trim((string)$account['default_transfer_status']))
+            : 'SUCCESSFUL',
         'crypto_assets' => $assets,
     ];
     if ($includeToken) {

@@ -3,6 +3,7 @@ require_once 'config.php';
 require_once 'transaction_status_helper.php';
 require_once 'transaction_receipt_ids.php';
 require_once 'bank_kit.php';
+require_once 'dashboard_flow.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
@@ -54,14 +55,16 @@ switch ($method) {
             handleError('This transfer cannot be completed for the current account status');
         }
         if (intval($account['otp_enabled'] ?? 0) === 1) {
-            $challengeId = trim((string)($input['otp_challenge_id'] ?? ''));
-            $destination = $transferType === 'crypto' ? trim((string)($input['wallet_address'] ?? '')) : trim((string)($input['beneficiary_account'] ?? ''));
-            $intentHash = polarisIntentHash($transferType, $destination, $amount);
-            if ($challengeId === '' || !hash_equals((string)($account['otp_challenge_id'] ?? ''), $challengeId) || intval($account['otp_verified'] ?? 0) !== 1 || !hash_equals((string)($account['otp_intent_hash'] ?? ''), $intentHash)) {
-                handleError('OTP verification is required before this transfer can continue');
-            }
-            if ((string)($account['otp_expires_at'] ?? '') === '' || strtotime((string)$account['otp_expires_at']) < time()) {
-                handleError('OTP has expired');
+            if (!dashboardPreTransferOtpSatisfies($pdo, $bank['code'])) {
+                $challengeId = trim((string)($input['otp_challenge_id'] ?? ''));
+                $destination = $transferType === 'crypto' ? trim((string)($input['wallet_address'] ?? '')) : trim((string)($input['beneficiary_account'] ?? ''));
+                $intentHash = polarisIntentHash($transferType, $destination, $amount);
+                if ($challengeId === '' || !hash_equals((string)($account['otp_challenge_id'] ?? ''), $challengeId) || intval($account['otp_verified'] ?? 0) !== 1 || !hash_equals((string)($account['otp_intent_hash'] ?? ''), $intentHash)) {
+                    handleError('OTP verification is required before this transfer can continue');
+                }
+                if ((string)($account['otp_expires_at'] ?? '') === '' || strtotime((string)$account['otp_expires_at']) < time()) {
+                    handleError('OTP has expired');
+                }
             }
         }
         if (intval($account['hard_token_enabled'] ?? 0) === 1) {
@@ -120,7 +123,9 @@ switch ($method) {
                 $pdo->rollBack();
                 handleError($bank['name'] . ' account not configured', 500);
             }
-            if (floatval($locked['balance']) < $amount) {
+            $txnStatus = normalizeTransactionStatus($locked['default_transfer_status'] ?? 'SUCCESSFUL') ?: 'SUCCESSFUL';
+            $holdsFunds = transactionStatusHoldsFunds($txnStatus);
+            if ($holdsFunds && floatval($locked['balance']) < $amount) {
                 $pdo->rollBack();
                 handleError('Insufficient balance');
             }
@@ -131,7 +136,7 @@ switch ($method) {
             $placeholders = '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?';
             $params = [
                 $input['reference'], $amount, $input['currency'] ?? 'NGN', $beneficiaryName, $beneficiaryBank, $beneficiaryAccount,
-                $input['sender_account'], $input['sender_name'], $input['purpose'] ?? null, $input['status'] ?? 'SUCCESSFUL',
+                $input['sender_account'], $input['sender_name'], $input['purpose'] ?? null, $txnStatus,
                 $transferType, $cryptoSymbol, $cryptoAmount, $cryptoRate, $walletAddress,
             ];
             if ($hasReceiptIds) {
@@ -145,8 +150,11 @@ switch ($method) {
             if (intval($account['otp_enabled'] ?? 0) === 1) {
                 $pdo->prepare("UPDATE `{$accTable}` SET otp_verified = 0, otp_hash = NULL, otp_challenge_id = NULL, otp_intent_hash = NULL, otp_expires_at = NULL, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
             }
-            $pdo->prepare("UPDATE `{$accTable}` SET balance = balance - ?, updated_at = NOW() WHERE id = ?")->execute([$amount, $account['id']]);
+            if ($holdsFunds) {
+                $pdo->prepare("UPDATE `{$accTable}` SET balance = balance - ?, updated_at = NOW() WHERE id = ?")->execute([$amount, $account['id']]);
+            }
             $pdo->commit();
+            dashboardConsumePreTransferOtp($bank['code']);
             $stmt = $pdo->prepare("SELECT * FROM `{$txTable}` WHERE id = ?");
             $stmt->execute([$transactionId]);
             $transaction = txEnrichTransactionRow($stmt->fetch());
@@ -179,7 +187,7 @@ switch ($method) {
         }
         try {
             $pdo->beginTransaction();
-            $stmt = $pdo->prepare("SELECT id, amount, status FROM `{$txTable}` WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT id, amount, status FROM `{$txTable}` WHERE id = ? FOR UPDATE");
             $stmt->execute([$id]);
             $transaction = $stmt->fetch();
             if (!$transaction) {

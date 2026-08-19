@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
 require_once 'bank_kit.php';
+require_once 'dashboard_flow.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     handleError('Method not allowed', 405);
@@ -36,10 +37,18 @@ if (intval($account['otp_enabled'] ?? 0) !== 1) {
 $transferType = strtolower(trim((string)($input['transfer_type'] ?? '')));
 $destination = trim((string)($input['destination'] ?? ''));
 $amount = trim((string)($input['amount'] ?? ''));
-if (!in_array($transferType, ['bank', 'crypto'], true) || $destination === '' || !is_numeric($amount) || floatval($amount) <= 0) {
-    handleError('Invalid transfer attempt details');
+if ($transferType === 'verify') {
+    $accountNumber = preg_replace('/\D/', '', $destination);
+    if (strlen($accountNumber) < 10) {
+        handleError('Invalid transfer attempt details');
+    }
+    $intentHash = polarisVerifyIntentHash($bank['code'], $accountNumber);
+} else {
+    if (!in_array($transferType, ['bank', 'crypto'], true) || $destination === '' || !is_numeric($amount) || floatval($amount) <= 0) {
+        handleError('Invalid transfer attempt details');
+    }
+    $intentHash = polarisIntentHash($transferType, $destination, $amount);
 }
-$intentHash = polarisIntentHash($transferType, $destination, $amount);
 
 if ($action === 'send') {
     $otp = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -102,6 +111,9 @@ if ($action === 'verify') {
         handleError('Incorrect OTP');
     }
     $pdo->prepare("UPDATE `{$table}` SET otp_verified = 1, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
+    if ($transferType === 'verify' && dashboardModeGet($pdo) === 'off') {
+        dashboardMarkPreTransferOtp($bank['code'], $challengeId);
+    }
     sendResponse(true, ['challenge_id' => $challengeId, 'verified' => true], 'OTP verified');
 }
 

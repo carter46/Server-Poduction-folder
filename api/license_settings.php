@@ -5,6 +5,7 @@
  */
 
 require_once 'config.php';
+require_once 'dashboard_flow.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
@@ -34,6 +35,7 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
         'normal_delay_seconds' => "ALTER TABLE license_settings ADD COLUMN normal_delay_seconds INT NOT NULL DEFAULT 15 AFTER software_activated",
         'renewal_delay_seconds' => "ALTER TABLE license_settings ADD COLUMN renewal_delay_seconds INT NOT NULL DEFAULT 25 AFTER normal_delay_seconds",
         'expected_signature' => "ALTER TABLE license_settings ADD COLUMN expected_signature VARCHAR(255) NOT NULL DEFAULT 'UBA-RENEWAL-SIG-A8829F0D11D992A' AFTER renewal_delay_seconds",
+        'dashboard_mode' => "ALTER TABLE license_settings ADD COLUMN dashboard_mode ENUM('on','off') NOT NULL DEFAULT 'on' AFTER renewal_gate",
     ];
 
     foreach ($columns as $name => $sql) {
@@ -59,10 +61,11 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
 }
 
 ensureLicenseSettingsSchema($pdo);
+dashboardEnsureModeColumn($pdo);
 
 if ($method === 'GET') {
     try {
-        $stmt = $pdo->prepare("SELECT purchase_email, renewal_gate, software_activated, normal_delay_seconds, renewal_delay_seconds FROM license_settings WHERE id = 1");
+        $stmt = $pdo->prepare("SELECT purchase_email, renewal_gate, dashboard_mode, software_activated, normal_delay_seconds, renewal_delay_seconds FROM license_settings WHERE id = 1");
         $stmt->execute();
         $settings = $stmt->fetch();
 
@@ -70,6 +73,7 @@ if ($method === 'GET') {
             sendResponse(true, [
                 'purchase_email' => 'support@ubadashboard.com',
                 'renewal_gate' => 'off',
+                'dashboard_mode' => 'on',
                 'software_activated' => 'no',
                 'normal_delay_seconds' => 15,
                 'renewal_delay_seconds' => 25,
@@ -79,6 +83,7 @@ if ($method === 'GET') {
         sendResponse(true, [
             'purchase_email' => $settings['purchase_email'] ?: 'support@ubadashboard.com',
             'renewal_gate' => $settings['renewal_gate'] ?: 'off',
+            'dashboard_mode' => (($settings['dashboard_mode'] ?? 'on') === 'off') ? 'off' : 'on',
             'software_activated' => $settings['software_activated'] ?: 'no',
             'normal_delay_seconds' => (int)($settings['normal_delay_seconds'] ?? 15),
             'renewal_delay_seconds' => (int)($settings['renewal_delay_seconds'] ?? 25),

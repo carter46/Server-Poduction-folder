@@ -137,6 +137,7 @@ function polarisEnsureTransferColumns(PDO $pdo): void
     polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_intent_hash', "otp_intent_hash VARCHAR(64) DEFAULT NULL");
     polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'otp_verified', "otp_verified TINYINT(1) NOT NULL DEFAULT 0");
     polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'crypto_assets', "crypto_assets TEXT DEFAULT NULL");
+    polarisAddColumnIfMissing($pdo, 'polaris_bank_account_settings', 'default_transfer_status', "default_transfer_status ENUM('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'");
 
     try {
         $stmt = $pdo->query("SELECT id, crypto_assets FROM polaris_bank_account_settings ORDER BY id DESC LIMIT 1");
