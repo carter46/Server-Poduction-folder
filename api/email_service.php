@@ -138,7 +138,11 @@ function emailSendViaPhpMailer(array $row, array $toEmails, string $subject, str
         $mail->Subject = $subject;
         $mail->Body = $html;
         $mail->AltBody = 'This message requires an HTML email client.';
-        $mail->send();
+        $accepted = $mail->send();
+        if ($accepted !== true) {
+            $info = trim((string)$mail->ErrorInfo);
+            return ['ok' => false, 'error' => emailSafeError($info !== '' ? $info : 'PHPMailer did not accept the message.')];
+        }
         return ['ok' => true, 'error' => ''];
     } catch (Throwable $e) {
         return ['ok' => false, 'error' => emailSafeError($e->getMessage())];
@@ -237,11 +241,11 @@ function emailProbeBrevo(array $row): array
  * @param string[] $toEmails
  * @return array{ok:bool,sent_via:?string,phpmailer_status:string,phpmailer_error:string,brevo_status:string,brevo_error:string,message:string}
  */
-function emailSendHtml(PDO $pdo, array $toEmails, string $subject, string $html, bool $probeBrevoOnPrimarySuccess = false): array
+function emailSendHtml(PDO $pdo, array $toEmails, string $subject, string $html, bool $probeBrevoOnPrimarySuccess = false, string $otpChallengeId = ''): array
 {
     $row = emailLoadMailRow($pdo);
     if (!$row) {
-        return [
+        return emailFinishSend([
             'ok' => false,
             'sent_via' => null,
             'phpmailer_status' => 'skipped',
@@ -249,7 +253,7 @@ function emailSendHtml(PDO $pdo, array $toEmails, string $subject, string $html,
             'brevo_status' => 'skipped',
             'brevo_error' => '',
             'message' => 'No email provider configured.',
-        ];
+        ], $otpChallengeId);
     }
     $phpOn = intval($row['mail_phpmailer_enabled'] ?? 0) === 1;
     $brevoOn = intval($row['mail_brevo_enabled'] ?? 0) === 1;
@@ -266,7 +270,7 @@ function emailSendHtml(PDO $pdo, array $toEmails, string $subject, string $html,
         $result['phpmailer_status'] = 'skipped';
         $result['brevo_status'] = 'skipped';
         $result['message'] = 'No email provider configured.';
-        return $result;
+        return emailFinishSend($result, $otpChallengeId);
     }
 
     if ($phpOn) {
@@ -288,7 +292,7 @@ function emailSendHtml(PDO $pdo, array $toEmails, string $subject, string $html,
             } elseif ($brevoOn) {
                 $result['brevo_status'] = 'skipped';
             }
-            return $result;
+            return emailFinishSend($result, $otpChallengeId);
         }
         $result['phpmailer_status'] = 'failed';
         $result['phpmailer_error'] = $php['error'];
@@ -305,7 +309,7 @@ function emailSendHtml(PDO $pdo, array $toEmails, string $subject, string $html,
             } else {
                 $result['message'] = 'Email sent successfully via Brevo.';
             }
-            return $result;
+            return emailFinishSend($result, $otpChallengeId);
         }
         $result['brevo_status'] = 'failed';
         $result['brevo_error'] = $brevo['error'];
@@ -318,6 +322,36 @@ function emailSendHtml(PDO $pdo, array $toEmails, string $subject, string $html,
     if ($brevoOn) {
         $parts[] = 'Brevo: ' . ($result['brevo_error'] !== '' ? $result['brevo_error'] : 'failed');
     }
+    $result['ok'] = false;
+    $result['sent_via'] = null;
     $result['message'] = 'Email could not be sent. ' . implode(' ', $parts);
+    return emailFinishSend($result, $otpChallengeId);
+}
+
+function emailFinishSend(array $result, string $otpChallengeId): array
+{
+    $via = $result['sent_via'] ?? null;
+    if (!empty($result['ok']) && $via !== 'phpmailer' && $via !== 'brevo') {
+        $result['ok'] = false;
+        $result['sent_via'] = null;
+        $result['message'] = 'Email could not be sent. No email provider accepted the message.';
+    }
+    emailLogOtpMail($otpChallengeId, $result);
     return $result;
+}
+
+function emailLogOtpMail(string $challengeId, array $result): void
+{
+    if ($challengeId === '') {
+        return;
+    }
+    $via = $result['sent_via'] ?? 'none';
+    if ($via === null || $via === '') {
+        $via = 'none';
+    }
+    $line = 'otp_mail challenge=' . $challengeId
+        . ' phpmailer=' . ($result['phpmailer_status'] ?? '')
+        . ' brevo=' . ($result['brevo_status'] ?? '')
+        . ' sent_via=' . $via;
+    error_log($line);
 }

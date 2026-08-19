@@ -3,7 +3,10 @@ deploy-upload-list.txt
 *.log
 
 # Server-only config — copy from config.example.php on the host
+# (Already-tracked files stay in git until `git rm --cached api/config.php`)
 api/config.php
+**/config.php
+!api/config.example.php
 
 # Full phpMyAdmin dumps include live payment keys and account data
 database/u502532383_uba.sql

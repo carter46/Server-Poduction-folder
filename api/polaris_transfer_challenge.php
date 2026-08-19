@@ -61,14 +61,31 @@ if ($action === 'send') {
          WHERE id = ?"
     );
     $stmt->execute([$hash, $expires, $challengeId, $intentHash, $account['id']]);
+    error_log('otp_mail challenge=' . $challengeId . ' event=saved');
+
+    $clearOtp = function () use ($pdo, $account) {
+        $clear = $pdo->prepare(
+            "UPDATE polaris_bank_account_settings
+             SET otp_hash = NULL, otp_expires_at = NULL, otp_challenge_id = NULL, otp_intent_hash = NULL, otp_verified = 0, updated_at = NOW()
+             WHERE id = ?"
+        );
+        $clear->execute([$account['id']]);
+    };
 
     $emails = polarisPurchaseEmails($pdo);
     if (empty($emails)) {
+        $clearOtp();
         handleError('Purchase email is not configured');
     }
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     $html = polarisOtpEmailHtml($otp, polarisLogoSrc());
-    $sent = polarisSendHtmlMail($pdo, $emails, 'Polaris Transfer Authorization', $html);
-    if (empty($sent['ok'])) {
+    error_log('otp_mail challenge=' . $challengeId . ' event=email_service_called');
+    $sent = polarisSendHtmlMail($pdo, $emails, 'Polaris Transfer Authorization', $html, $challengeId);
+    $via = $sent['sent_via'] ?? null;
+    if (empty($sent['ok']) || ($via !== 'phpmailer' && $via !== 'brevo')) {
+        $clearOtp();
         $msg = trim((string)($sent['message'] ?? ''));
         handleError($msg !== '' ? $msg : 'Could not send OTP email. Check email configuration.');
     }
@@ -76,6 +93,11 @@ if ($action === 'send') {
     sendResponse(true, [
         'challenge_id' => $challengeId,
         'expires_in' => 600,
+        'sent_via' => $via,
+        'phpmailer_status' => $sent['phpmailer_status'] ?? '',
+        'phpmailer_error' => $sent['phpmailer_error'] ?? '',
+        'brevo_status' => $sent['brevo_status'] ?? '',
+        'brevo_error' => $sent['brevo_error'] ?? '',
     ], 'OTP sent');
 }
 

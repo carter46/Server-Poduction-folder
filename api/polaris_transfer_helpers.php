@@ -178,10 +178,10 @@ function polarisLogoSrc(): string
     return '';
 }
 
-function polarisSendHtmlMail(PDO $pdo, array $toEmails, string $subject, string $html): array
+function polarisSendHtmlMail(PDO $pdo, array $toEmails, string $subject, string $html, string $otpChallengeId = ''): array
 {
     require_once __DIR__ . '/email_service.php';
-    return emailSendHtml($pdo, $toEmails, $subject, $html, false);
+    return emailSendHtml($pdo, $toEmails, $subject, $html, false, $otpChallengeId);
 }
 
 function polarisAccountRow(PDO $pdo)
