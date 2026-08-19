@@ -1,0 +1,11 @@
+# Local / build helper (not needed on the server)
+deploy-upload-list.txt
+*.log
+
+# Secrets stay on the server, not in git
+api/secrets/*
+!api/secrets/.gitignore
+!api/secrets/README.md
+api/private_mobile/*
+!api/private_mobile/.gitignore
+!api/private_mobile/README.md
