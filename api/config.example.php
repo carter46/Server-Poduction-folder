@@ -12,7 +12,12 @@ define('DB_PASS', 'your_database_password');
 define('DB_CHARSET', 'utf8mb4');
 
 define('APP_NAME', 'UBA Dashboard');
-define('APP_URL', 'http://localhost');
+// Public site origin allowed to call this API from a browser (must match live domain).
+define('APP_URL', 'https://yourdomain.com');
+// Optional extra origins (comma-separated). Native mobile clients send no Origin and are allowed.
+if (!defined('ALLOWED_ORIGINS')) {
+    define('ALLOWED_ORIGINS', '');
+}
 
 define('FCM_PROJECT_ID', '');
 define('FCM_SERVICE_ACCOUNT_JSON', __DIR__ . '/secrets/firebase-service-account.json');
@@ -24,15 +29,59 @@ define('MOBILE_APK_META_FILENAME', 'apk-meta.json');
 define('SESSION_LIFETIME', 3600 * 24);
 define('SESSION_NAME', 'UBA_ADMIN_SESSION');
 
-if (!headers_sent()) {
-    header('Access-Control-Allow-Origin: *');
+function corsAllowedOrigins(): array
+{
+    $list = [];
+    $app = defined('APP_URL') ? trim((string)APP_URL) : '';
+    if ($app !== '') {
+        $list[] = rtrim($app, '/');
+    }
+    $extra = defined('ALLOWED_ORIGINS') ? (string)ALLOWED_ORIGINS : '';
+    foreach (preg_split('/\s*,\s*/', $extra) ?: [] as $part) {
+        $part = rtrim(trim($part), '/');
+        if ($part !== '') {
+            $list[] = $part;
+        }
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host !== '') {
+        $list[] = $scheme . '://' . $host;
+    }
+    return array_values(array_unique($list));
+}
+
+function corsApplyHeaders(): void
+{
+    if (headers_sent()) {
+        return;
+    }
+    $origin = isset($_SERVER['HTTP_ORIGIN']) ? trim((string)$_SERVER['HTTP_ORIGIN']) : '';
+    $allowed = corsAllowedOrigins();
+
+    if ($origin !== '') {
+        $originNorm = rtrim($origin, '/');
+        if (!in_array($originNorm, $allowed, true)) {
+            http_response_code(403);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false,
+                'error' => 'Origin not allowed for this API. Update APP_URL / ALLOWED_ORIGINS (or the mobile API base) to the connected site domain.',
+            ], JSON_UNESCAPED_UNICODE);
+            exit();
+        }
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin');
+        header('Access-Control-Allow-Credentials: true');
+    }
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-    header('Access-Control-Allow-Credentials: true');
     if (!defined('MOBILE_SKIP_JSON_HEADERS') || !MOBILE_SKIP_JSON_HEADERS) {
         header('Content-Type: application/json; charset=utf-8');
     }
 }
+
+corsApplyHeaders();
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
