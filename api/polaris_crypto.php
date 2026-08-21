@@ -1,6 +1,6 @@
 <?php
 /**
- * Polar CoinGecko proxy for simulated crypto rates and admin coin picker.
+ * Shared CoinGecko proxy for simulated crypto rates (all banks) and admin coin picker.
  */
 require_once 'config.php';
 require_once 'polaris_stanbic_schema.php';
@@ -25,7 +25,10 @@ if ($action === 'rate') {
     if (empty($requested)) {
         $ids = $enabledIds;
     } else {
-        $ids = array_values(array_intersect($requested, $enabledIds));
+        // Explicit ids: fetch those CoinGecko rates directly.
+        // Do not intersect with Polaris-only enabled list — BankKit banks
+        // have their own crypto_assets and still use this shared rate proxy.
+        $ids = $requested;
     }
     $rates = polarisFetchNgnRates($ids);
     if (empty($rates)) {
