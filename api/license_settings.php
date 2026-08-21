@@ -1,41 +1,20 @@
+<?php
 /**
  * License Settings API (Public)
  * Returns purchase email, software renewal gate settings, and public global transfer flags.
  * Never exposes hard_token or default_transfer_status.
+ *
+ * Self-contained: does not require dashboard_flow.php so this endpoint still returns
+ * valid JSON when that helper is missing or broken on the host.
  */
 
 require_once 'config.php';
-if (!is_file(__DIR__ . '/dashboard_flow.php')) {
-    // Soft-fail: verification must still load other settings (Paystack) if this helper is missing on host.
-    function globalTransferPublicFlags(PDO $pdo): array
-    {
-        unset($pdo);
-        return [
-            'otp_enabled' => false,
-            'hard_token_enabled' => false,
-            'transfer_restriction' => false,
-            'risky_transaction' => false,
-            'nin_verification' => false,
-            'log_status' => 'full_logs',
-        ];
-    }
-    function dashboardEnsureModeColumn(PDO $pdo): void
-    {
-        unset($pdo);
-    }
-    function globalTransferEnsureColumns(PDO $pdo): void
-    {
-        unset($pdo);
-    }
-} else {
-    require_once 'dashboard_flow.php';
-}
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
 
 /**
- * Ensure license_settings table has renewal/activation columns
+ * Ensure license_settings table has renewal/activation/transfer flag columns
  */
 function ensureLicenseSettingsSchema(PDO $pdo) {
     try {
@@ -60,6 +39,12 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
         'renewal_delay_seconds' => "ALTER TABLE license_settings ADD COLUMN renewal_delay_seconds INT NOT NULL DEFAULT 25 AFTER normal_delay_seconds",
         'expected_signature' => "ALTER TABLE license_settings ADD COLUMN expected_signature VARCHAR(255) NOT NULL DEFAULT 'UBA-RENEWAL-SIG-A8829F0D11D992A' AFTER renewal_delay_seconds",
         'dashboard_mode' => "ALTER TABLE license_settings ADD COLUMN dashboard_mode ENUM('on','off') NOT NULL DEFAULT 'on' AFTER renewal_gate",
+        'otp_enabled' => "ALTER TABLE license_settings ADD COLUMN otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
+        'hard_token_enabled' => "ALTER TABLE license_settings ADD COLUMN hard_token_enabled TINYINT(1) NOT NULL DEFAULT 0",
+        'transfer_restriction' => "ALTER TABLE license_settings ADD COLUMN transfer_restriction TINYINT(1) NOT NULL DEFAULT 0",
+        'risky_transaction' => "ALTER TABLE license_settings ADD COLUMN risky_transaction TINYINT(1) NOT NULL DEFAULT 0",
+        'nin_verification' => "ALTER TABLE license_settings ADD COLUMN nin_verification TINYINT(1) NOT NULL DEFAULT 0",
+        'log_status' => "ALTER TABLE license_settings ADD COLUMN log_status VARCHAR(32) NOT NULL DEFAULT 'full_logs'",
     ];
 
     foreach ($columns as $name => $sql) {
@@ -81,19 +66,51 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
     } catch (PDOException $e) {
         // ignore
     }
+}
 
-    globalTransferEnsureColumns($pdo);
+function licensePublicTransferFlags(PDO $pdo): array {
+    $defaults = [
+        'otp_enabled' => false,
+        'hard_token_enabled' => false,
+        'transfer_restriction' => false,
+        'risky_transaction' => false,
+        'nin_verification' => false,
+        'log_status' => 'full_logs',
+    ];
+    try {
+        $stmt = $pdo->query(
+            "SELECT otp_enabled, hard_token_enabled, transfer_restriction, risky_transaction, nin_verification, log_status
+             FROM license_settings WHERE id = 1 LIMIT 1"
+        );
+        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+        if (!$row) {
+            return $defaults;
+        }
+        $log = strtolower(trim((string)($row['log_status'] ?? 'full_logs')));
+        if ($log === '') {
+            $log = 'full_logs';
+        }
+        return [
+            'otp_enabled' => intval($row['otp_enabled'] ?? 0) === 1,
+            'hard_token_enabled' => intval($row['hard_token_enabled'] ?? 0) === 1,
+            'transfer_restriction' => intval($row['transfer_restriction'] ?? 0) === 1,
+            'risky_transaction' => intval($row['risky_transaction'] ?? 0) === 1,
+            'nin_verification' => intval($row['nin_verification'] ?? 0) === 1,
+            'log_status' => $log,
+        ];
+    } catch (PDOException $e) {
+        return $defaults;
+    }
 }
 
 ensureLicenseSettingsSchema($pdo);
-dashboardEnsureModeColumn($pdo);
 
 if ($method === 'GET') {
     try {
         $stmt = $pdo->prepare("SELECT purchase_email, renewal_gate, dashboard_mode, software_activated, normal_delay_seconds, renewal_delay_seconds FROM license_settings WHERE id = 1");
         $stmt->execute();
         $settings = $stmt->fetch();
-        $flags = globalTransferPublicFlags($pdo);
+        $flags = licensePublicTransferFlags($pdo);
 
         if (!$settings) {
             sendResponse(true, array_merge([
