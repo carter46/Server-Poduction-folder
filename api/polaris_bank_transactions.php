@@ -46,6 +46,11 @@ switch ($method) {
             handleError('Invalid transfer_type');
         }
 
+        $globalEarly = globalTransferSettingsGet($pdo);
+        if ($transferType === 'crypto' && ($globalEarly['crypto_mode'] ?? 'on') === 'off') {
+            handleError('Crypto transfers are disabled');
+        }
+
         $amount = floatval(polarisNormalizeAmount($input['amount'] ?? 0));
         if ($amount <= 0) {
             handleError('Amount must be greater than zero');
@@ -76,6 +81,10 @@ switch ($method) {
             if ($expiresAt === '' || strtotime($expiresAt) < time()) {
                 handleError('OTP has expired', 403, 'OTP_EXPIRED');
             }
+        }
+
+        if (!empty($global['phone_otp_enabled']) && intval($account['phone_otp_verified'] ?? 0) !== 1) {
+            handleError('Phone OTP verification is required before this transfer can continue', 403, 'PHONE_OTP_REQUIRED');
         }
 
         if (!empty($global['hard_token_enabled'])) {
@@ -150,6 +159,10 @@ switch ($method) {
                 handleError('Polaris account not configured', 500);
             }
             $global = globalTransferSettingsGet($pdo);
+            if (!empty($global['phone_otp_enabled']) && intval($locked['phone_otp_verified'] ?? 0) !== 1) {
+                $pdo->rollBack();
+                handleError('Phone OTP verification is required before this transfer can continue', 403, 'PHONE_OTP_REQUIRED');
+            }
             if (!empty($global['transfer_restriction'])) {
                 $pdo->rollBack();
                 handleError('This transfer cannot be completed due to a transfer restriction.', 403, 'GLOBAL_TRANSFER_RESTRICTION');
@@ -218,6 +231,11 @@ switch ($method) {
                      WHERE id = ?"
                 );
                 $clear->execute([$account['id']]);
+            }
+            if (!empty($global['phone_otp_enabled'])) {
+                $pdo->prepare(
+                    "UPDATE polaris_bank_account_settings SET phone_otp_verified = 0, updated_at = NOW() WHERE id = ?"
+                )->execute([$account['id']]);
             }
 
             if ($holdsFunds) {

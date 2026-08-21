@@ -26,6 +26,8 @@ function globalTransferEnsureColumns(PDO $pdo): void
         'risky_transaction' => "ALTER TABLE license_settings ADD COLUMN risky_transaction TINYINT(1) NOT NULL DEFAULT 0",
         'nin_verification' => "ALTER TABLE license_settings ADD COLUMN nin_verification TINYINT(1) NOT NULL DEFAULT 0",
         'log_status' => "ALTER TABLE license_settings ADD COLUMN log_status ENUM('full_logs','weak_logs','pending_request','post_no_debit','fixed_account') NOT NULL DEFAULT 'full_logs'",
+        'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
+        'phone_otp_enabled' => "ALTER TABLE license_settings ADD COLUMN phone_otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
     ];
     foreach ($columns as $name => $sql) {
         try {
@@ -48,7 +50,9 @@ function globalTransferEnsureColumns(PDO $pdo): void
  *   transfer_restriction:bool,
  *   risky_transaction:bool,
  *   nin_verification:bool,
- *   log_status:string
+ *   log_status:string,
+ *   crypto_mode:string,
+ *   phone_otp_enabled:bool
  * }
  */
 function globalTransferSettingsGet(PDO $pdo): array
@@ -63,11 +67,14 @@ function globalTransferSettingsGet(PDO $pdo): array
         'risky_transaction' => false,
         'nin_verification' => false,
         'log_status' => 'full_logs',
+        'crypto_mode' => 'on',
+        'phone_otp_enabled' => false,
     ];
     try {
         $stmt = $pdo->query(
             "SELECT otp_enabled, hard_token_enabled, hard_token, default_transfer_status,
-                    transfer_restriction, risky_transaction, nin_verification, log_status
+                    transfer_restriction, risky_transaction, nin_verification, log_status, crypto_mode,
+                    phone_otp_enabled
              FROM license_settings WHERE id = 1 LIMIT 1"
         );
         $row = $stmt ? $stmt->fetch() : false;
@@ -82,6 +89,10 @@ function globalTransferSettingsGet(PDO $pdo): array
         if (!in_array($log, ['full_logs', 'weak_logs', 'pending_request', 'post_no_debit', 'fixed_account'], true)) {
             $log = 'full_logs';
         }
+        $cryptoMode = strtolower(trim((string)($row['crypto_mode'] ?? 'on')));
+        if ($cryptoMode !== 'off') {
+            $cryptoMode = 'on';
+        }
         return [
             'otp_enabled' => intval($row['otp_enabled'] ?? 0) === 1,
             'hard_token_enabled' => intval($row['hard_token_enabled'] ?? 0) === 1,
@@ -91,6 +102,8 @@ function globalTransferSettingsGet(PDO $pdo): array
             'risky_transaction' => intval($row['risky_transaction'] ?? 0) === 1,
             'nin_verification' => intval($row['nin_verification'] ?? 0) === 1,
             'log_status' => $log,
+            'crypto_mode' => $cryptoMode,
+            'phone_otp_enabled' => intval($row['phone_otp_enabled'] ?? 0) === 1,
         ];
     } catch (PDOException $e) {
         return $defaults;
@@ -108,6 +121,8 @@ function globalTransferPublicFlags(PDO $pdo): array
         'risky_transaction' => $g['risky_transaction'],
         'nin_verification' => $g['nin_verification'],
         'log_status' => $g['log_status'],
+        'crypto_mode' => $g['crypto_mode'],
+        'phone_otp_enabled' => $g['phone_otp_enabled'],
     ];
 }
 
@@ -213,7 +228,13 @@ function dashboardNormalizeAccount(string $accountNumber): string
     return is_string($digits) ? $digits : '';
 }
 
-function dashboardMarkBankVerified(string $bankCode, string $accountNumber = ''): void
+function dashboardNormalizePhone(string $phoneNumber): string
+{
+    $digits = preg_replace('/\D/', '', $phoneNumber);
+    return is_string($digits) ? $digits : '';
+}
+
+function dashboardMarkBankVerified(string $bankCode, string $accountNumber = '', string $phoneNumber = ''): void
 {
     if (!dashboardUserSessionStart()) {
         handleError('Unauthorized. Please login.', 401);
@@ -222,15 +243,23 @@ function dashboardMarkBankVerified(string $bankCode, string $accountNumber = '')
         $_SESSION['df_verified'] = [];
     }
     $digits = dashboardNormalizeAccount($accountNumber);
+    $phoneDigits = dashboardNormalizePhone($phoneNumber);
     $existing = $_SESSION['df_verified'][$bankCode] ?? null;
     $prevAcct = '';
+    $prevPhone = '';
     if (is_array($existing)) {
         $prevAcct = dashboardNormalizeAccount((string)($existing['account_number'] ?? ''));
+        $prevPhone = dashboardNormalizePhone((string)($existing['phone_number'] ?? ''));
     }
     $store = strlen($digits) === 10 ? $digits : (strlen($prevAcct) === 10 ? $prevAcct : '');
+    $lenPhone = strlen($phoneDigits);
+    $storePhone = ($lenPhone >= 10 && $lenPhone <= 11)
+        ? $phoneDigits
+        : ((strlen($prevPhone) >= 10 && strlen($prevPhone) <= 11) ? $prevPhone : '');
     $_SESSION['df_verified'][$bankCode] = [
         'bank_code' => $bankCode,
         'account_number' => $store,
+        'phone_number' => $storePhone,
         'at' => time(),
     ];
 }
@@ -272,14 +301,45 @@ function dashboardVerifiedAccountNumber(string $bankCode): ?string
     return strlen($digits) === 10 ? $digits : null;
 }
 
-/** Clear Mode OFF prefill after a successful create (one-shot). Never related to OTP. */
+function dashboardVerifiedPhone(string $bankCode): ?string
+{
+    if (!dashboardBankVerified($bankCode)) {
+        return null;
+    }
+    $row = $_SESSION['df_verified'][$bankCode] ?? null;
+    if (!is_array($row)) {
+        return null;
+    }
+    $digits = dashboardNormalizePhone((string)($row['phone_number'] ?? ''));
+    $len = strlen($digits);
+    return ($len >= 10 && $len <= 11) ? $digits : null;
+}
+
+/** Clear Mode OFF account prefill after a successful create (one-shot).
+ * Keep phone_number so Phone OTP can still display the verify-form number.
+ */
 function dashboardConsumeVerifiedPrefill(string $bankCode): void
 {
     if (!dashboardUserSessionStart()) {
         return;
     }
     if (isset($_SESSION['df_verified']) && is_array($_SESSION['df_verified'])) {
-        unset($_SESSION['df_verified'][$bankCode]);
+        $row = $_SESSION['df_verified'][$bankCode] ?? null;
+        $phone = '';
+        if (is_array($row)) {
+            $phone = dashboardNormalizePhone((string)($row['phone_number'] ?? ''));
+        }
+        $phoneLen = strlen($phone);
+        if ($phoneLen >= 10 && $phoneLen <= 11) {
+            $_SESSION['df_verified'][$bankCode] = [
+                'bank_code' => $bankCode,
+                'account_number' => '',
+                'phone_number' => $phone,
+                'at' => time(),
+            ];
+        } else {
+            unset($_SESSION['df_verified'][$bankCode]);
+        }
     }
     // Legacy cleanup if old sessions still hold df_otp
     if (isset($_SESSION['df_otp']) && is_array($_SESSION['df_otp'])) {
@@ -316,10 +376,12 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
         if ($mode === 'off' && $verified) {
             $accountNumber = dashboardVerifiedAccountNumber($bankCode);
         }
+        $verifiedPhone = ($known && $verified) ? dashboardVerifiedPhone($bankCode) : null;
         sendResponse(true, array_merge([
             'dashboard_mode' => $mode,
             'bank_verified' => $verified,
             'account_number' => $accountNumber,
+            'verified_phone' => $verifiedPhone,
         ], globalTransferPublicFlags($pdo)));
     }
 
@@ -334,12 +396,19 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
             if (strlen($digits) !== 10) {
                 handleError('A valid 10-digit account number is required');
             }
-            dashboardMarkBankVerified($bankCode, $digits);
+            $phoneDigits = dashboardNormalizePhone((string)($input['phone_number'] ?? ''));
+            $phoneLen = strlen($phoneDigits);
+            if ($phoneLen > 0 && ($phoneLen < 10 || $phoneLen > 11)) {
+                handleError('A valid 10–11 digit phone number is required');
+            }
+            dashboardMarkBankVerified($bankCode, $digits, $phoneDigits);
             $mode = dashboardModeGet($pdo);
+            $verified = dashboardBankVerified($bankCode);
             sendResponse(true, [
                 'dashboard_mode' => $mode,
-                'bank_verified' => dashboardBankVerified($bankCode),
-                'account_number' => ($mode === 'off' && dashboardBankVerified($bankCode)) ? dashboardVerifiedAccountNumber($bankCode) : null,
+                'bank_verified' => $verified,
+                'account_number' => ($mode === 'off' && $verified) ? dashboardVerifiedAccountNumber($bankCode) : null,
+                'verified_phone' => $verified ? dashboardVerifiedPhone($bankCode) : null,
             ], 'Bank verification recorded');
         }
         handleError('Unknown action');

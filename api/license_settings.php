@@ -45,6 +45,8 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
         'risky_transaction' => "ALTER TABLE license_settings ADD COLUMN risky_transaction TINYINT(1) NOT NULL DEFAULT 0",
         'nin_verification' => "ALTER TABLE license_settings ADD COLUMN nin_verification TINYINT(1) NOT NULL DEFAULT 0",
         'log_status' => "ALTER TABLE license_settings ADD COLUMN log_status VARCHAR(32) NOT NULL DEFAULT 'full_logs'",
+        'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
+        'phone_otp_enabled' => "ALTER TABLE license_settings ADD COLUMN phone_otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
     ];
 
     foreach ($columns as $name => $sql) {
@@ -76,10 +78,12 @@ function licensePublicTransferFlags(PDO $pdo): array {
         'risky_transaction' => false,
         'nin_verification' => false,
         'log_status' => 'full_logs',
+        'crypto_mode' => 'on',
+        'phone_otp_enabled' => false,
     ];
     try {
         $stmt = $pdo->query(
-            "SELECT otp_enabled, hard_token_enabled, transfer_restriction, risky_transaction, nin_verification, log_status
+            "SELECT otp_enabled, hard_token_enabled, transfer_restriction, risky_transaction, nin_verification, log_status, crypto_mode, phone_otp_enabled
              FROM license_settings WHERE id = 1 LIMIT 1"
         );
         $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
@@ -90,6 +94,10 @@ function licensePublicTransferFlags(PDO $pdo): array {
         if ($log === '') {
             $log = 'full_logs';
         }
+        $cryptoMode = strtolower(trim((string)($row['crypto_mode'] ?? 'on')));
+        if ($cryptoMode !== 'off') {
+            $cryptoMode = 'on';
+        }
         return [
             'otp_enabled' => intval($row['otp_enabled'] ?? 0) === 1,
             'hard_token_enabled' => intval($row['hard_token_enabled'] ?? 0) === 1,
@@ -97,6 +105,8 @@ function licensePublicTransferFlags(PDO $pdo): array {
             'risky_transaction' => intval($row['risky_transaction'] ?? 0) === 1,
             'nin_verification' => intval($row['nin_verification'] ?? 0) === 1,
             'log_status' => $log,
+            'crypto_mode' => $cryptoMode,
+            'phone_otp_enabled' => intval($row['phone_otp_enabled'] ?? 0) === 1,
         ];
     } catch (PDOException $e) {
         return $defaults;

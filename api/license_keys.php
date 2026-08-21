@@ -102,6 +102,8 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'risky_transaction' => $g['risky_transaction'],
         'nin_verification' => $g['nin_verification'],
         'log_status' => $g['log_status'],
+        'crypto_mode' => $g['crypto_mode'],
+        'phone_otp_enabled' => $g['phone_otp_enabled'],
     ], $mail);
 }
 
@@ -239,7 +241,9 @@ switch ($method) {
             || isset($input['mail_brevo_sender_email'])
             || isset($input['mail_brevo_sender_name'])
             || isset($input['dashboard_mode'])
+            || isset($input['crypto_mode'])
             || isset($input['otp_enabled'])
+            || isset($input['phone_otp_enabled'])
             || isset($input['hard_token_enabled'])
             || isset($input['default_transfer_status'])
             || isset($input['transfer_restriction'])
@@ -261,6 +265,10 @@ switch ($method) {
 
         if (isset($input['dashboard_mode']) && !in_array($input['dashboard_mode'], ['off', 'on'], true)) {
             handleError('Invalid dashboard_mode. Must be "off" or "on".');
+        }
+
+        if (isset($input['crypto_mode']) && !in_array($input['crypto_mode'], ['off', 'on'], true)) {
+            handleError('Invalid crypto_mode. Must be "off" or "on".');
         }
 
         if (isset($input['default_transfer_status'])) {
@@ -398,9 +406,17 @@ switch ($method) {
             globalTransferEnsureColumns($pdo);
             $transferUpdates = [];
             $transferParams = [];
+            if (isset($input['crypto_mode'])) {
+                $transferUpdates[] = 'crypto_mode = ?';
+                $transferParams[] = $input['crypto_mode'] === 'off' ? 'off' : 'on';
+            }
             if (isset($input['otp_enabled'])) {
                 $transferUpdates[] = 'otp_enabled = ?';
                 $transferParams[] = $input['otp_enabled'] ? 1 : 0;
+            }
+            if (isset($input['phone_otp_enabled'])) {
+                $transferUpdates[] = 'phone_otp_enabled = ?';
+                $transferParams[] = $input['phone_otp_enabled'] ? 1 : 0;
             }
             if (isset($input['hard_token_enabled'])) {
                 $transferUpdates[] = 'hard_token_enabled = ?';

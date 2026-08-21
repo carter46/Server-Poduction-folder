@@ -32,6 +32,27 @@ if ($action === 'verify_token') {
 }
 
 $global = globalTransferSettingsGet($pdo);
+
+if ($action === 'send_phone') {
+    if (empty($global['phone_otp_enabled'])) {
+        handleError('Phone OTP is not enabled');
+    }
+    $pdo->prepare("UPDATE `{$table}` SET phone_otp_verified = 0, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
+    sendResponse(true, ['ok' => true], 'Phone OTP ready');
+}
+
+if ($action === 'verify_phone') {
+    if (empty($global['phone_otp_enabled'])) {
+        sendResponse(true, ['verified' => true], 'Phone OTP not required');
+    }
+    $otp = preg_replace('/\D/', '', (string)($input['otp'] ?? ''));
+    if (!is_string($otp) || strlen($otp) !== 6) {
+        handleError('Invalid OTP');
+    }
+    $pdo->prepare("UPDATE `{$table}` SET phone_otp_verified = 1, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
+    sendResponse(true, ['verified' => true], 'Phone OTP verified');
+}
+
 if (empty($global['otp_enabled'])) {
     handleError('OTP is not enabled');
 }
@@ -49,7 +70,7 @@ if ($action === 'send') {
     $challengeId = bin2hex(random_bytes(16));
     $expires = date('Y-m-d H:i:s', time() + 600);
     $hash = password_hash($otp, PASSWORD_DEFAULT);
-    $stmt = $pdo->prepare("UPDATE `{$table}` SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, updated_at = NOW() WHERE id = ?");
+    $stmt = $pdo->prepare("UPDATE `{$table}` SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, phone_otp_verified = 0, updated_at = NOW() WHERE id = ?");
     $stmt->execute([$hash, $expires, $challengeId, $intentHash, $account['id']]);
 
     $clearOtp = function () use ($pdo, $table, $account) {

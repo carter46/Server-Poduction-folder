@@ -38,6 +38,31 @@ if ($action === 'verify_token') {
 }
 
 $global = globalTransferSettingsGet($pdo);
+
+if ($action === 'send_phone') {
+    if (empty($global['phone_otp_enabled'])) {
+        handleError('Phone OTP is not enabled');
+    }
+    $pdo->prepare(
+        "UPDATE polaris_bank_account_settings SET phone_otp_verified = 0, updated_at = NOW() WHERE id = ?"
+    )->execute([$account['id']]);
+    sendResponse(true, ['ok' => true], 'Phone OTP ready');
+}
+
+if ($action === 'verify_phone') {
+    if (empty($global['phone_otp_enabled'])) {
+        sendResponse(true, ['verified' => true], 'Phone OTP not required');
+    }
+    $otp = preg_replace('/\D/', '', (string)($input['otp'] ?? ''));
+    if (!is_string($otp) || strlen($otp) !== 6) {
+        handleError('Invalid OTP');
+    }
+    $pdo->prepare(
+        "UPDATE polaris_bank_account_settings SET phone_otp_verified = 1, updated_at = NOW() WHERE id = ?"
+    )->execute([$account['id']]);
+    sendResponse(true, ['verified' => true], 'Phone OTP verified');
+}
+
 $otpEnabled = !empty($global['otp_enabled']);
 if (!$otpEnabled) {
     handleError('OTP is not enabled');
@@ -59,7 +84,7 @@ if ($action === 'send') {
 
     $stmt = $pdo->prepare(
         "UPDATE polaris_bank_account_settings
-         SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, updated_at = NOW()
+         SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, phone_otp_verified = 0, updated_at = NOW()
          WHERE id = ?"
     );
     $stmt->execute([$hash, $expires, $challengeId, $intentHash, $account['id']]);

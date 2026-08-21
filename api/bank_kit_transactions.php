@@ -38,6 +38,10 @@ switch ($method) {
         if (!in_array($transferType, ['bank', 'crypto'], true)) {
             handleError('Invalid transfer_type');
         }
+        $globalEarly = globalTransferSettingsGet($pdo);
+        if ($transferType === 'crypto' && ($globalEarly['crypto_mode'] ?? 'on') === 'off') {
+            handleError('Crypto transfers are disabled');
+        }
         $amount = floatval(polarisNormalizeAmount($input['amount'] ?? 0));
         if ($amount <= 0) {
             handleError('Amount must be greater than zero');
@@ -60,6 +64,9 @@ switch ($method) {
             if ((string)($account['otp_expires_at'] ?? '') === '' || strtotime((string)$account['otp_expires_at']) < time()) {
                 handleError('OTP has expired', 403, 'OTP_EXPIRED');
             }
+        }
+        if (!empty($global['phone_otp_enabled']) && intval($account['phone_otp_verified'] ?? 0) !== 1) {
+            handleError('Phone OTP verification is required before this transfer can continue', 403, 'PHONE_OTP_REQUIRED');
         }
         if (!empty($global['hard_token_enabled'])) {
             $postedToken = trim((string)($input['hard_token'] ?? ''));
@@ -126,6 +133,10 @@ switch ($method) {
                 handleError($bank['name'] . ' account not configured', 500);
             }
             $global = globalTransferSettingsGet($pdo);
+            if (!empty($global['phone_otp_enabled']) && intval($locked['phone_otp_verified'] ?? 0) !== 1) {
+                $pdo->rollBack();
+                handleError('Phone OTP verification is required before this transfer can continue', 403, 'PHONE_OTP_REQUIRED');
+            }
             if (!empty($global['transfer_restriction'])) {
                 $pdo->rollBack();
                 handleError('This transfer cannot be completed due to a transfer restriction.', 403, 'GLOBAL_TRANSFER_RESTRICTION');
@@ -171,6 +182,9 @@ switch ($method) {
             $transactionId = intval($pdo->lastInsertId());
             if (!empty($global['otp_enabled'])) {
                 $pdo->prepare("UPDATE `{$accTable}` SET otp_verified = 0, otp_hash = NULL, otp_challenge_id = NULL, otp_intent_hash = NULL, otp_expires_at = NULL, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
+            }
+            if (!empty($global['phone_otp_enabled'])) {
+                $pdo->prepare("UPDATE `{$accTable}` SET phone_otp_verified = 0, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
             }
             if ($holdsFunds) {
                 $pdo->prepare("UPDATE `{$accTable}` SET balance = balance - ?, updated_at = NOW() WHERE id = ?")->execute([$amount, $account['id']]);

@@ -156,6 +156,7 @@ function bankKitEnsure(PDO $pdo): void
         polarisAddColumnIfMissing($pdo, $acc, 'otp_challenge_id', 'otp_challenge_id VARCHAR(64) DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $acc, 'otp_intent_hash', 'otp_intent_hash VARCHAR(64) DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $acc, 'otp_verified', 'otp_verified TINYINT(1) NOT NULL DEFAULT 0');
+        polarisAddColumnIfMissing($pdo, $acc, 'phone_otp_verified', 'phone_otp_verified TINYINT(1) NOT NULL DEFAULT 0');
         polarisAddColumnIfMissing($pdo, $acc, 'crypto_assets', 'crypto_assets TEXT DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $acc, 'default_transfer_status', "default_transfer_status ENUM('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'");
         polarisAddColumnIfMissing($pdo, $tx, 'transfer_type', "transfer_type VARCHAR(20) NOT NULL DEFAULT 'bank'");
