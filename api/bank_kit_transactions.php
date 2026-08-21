@@ -49,8 +49,6 @@ switch ($method) {
 
         // Re-read global settings immediately before authorize/create (never trust FE GET).
         $global = globalTransferSettingsGet($pdo);
-        globalTransferEnforceRestrictions($global);
-        globalTransferEnforceLogStatus($global);
 
         if (!empty($global['otp_enabled'])) {
             $challengeId = trim((string)($input['otp_challenge_id'] ?? ''));
@@ -70,6 +68,11 @@ switch ($method) {
                 handleError('Hard token is incorrect');
             }
         }
+
+        // Restrictions / log status only after OTP + Hard Token when those are enabled.
+        $global = globalTransferSettingsGet($pdo);
+        globalTransferEnforceRestrictions($global);
+        globalTransferEnforceLogStatus($global);
         $cryptoSymbol = null;
         $cryptoAmount = null;
         $cryptoRate = null;
