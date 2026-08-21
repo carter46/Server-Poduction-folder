@@ -28,6 +28,7 @@ $bankNames = [
     '057' => 'Zenith Bank',
     '50211' => 'Kuda Bank',
     '50515' => 'Moniepoint',
+    '090405' => 'Moniepoint',
     '999992' => 'OPay',
     '100033' => 'PalmPay',
 ];

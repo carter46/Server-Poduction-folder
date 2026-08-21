@@ -97,6 +97,127 @@ function bankKitRegistry(): array
             'accent' => '#2E8B32',
             'prefix' => 'FIDXFER',
         ],
+        '058' => [
+            'slug' => 'gtbank',
+            'name' => 'Guaranty Trust Bank',
+            'account_table' => 'gtbank_account_settings',
+            'tx_table' => 'gtbank_transactions',
+            'fcm' => 'gtbank',
+            'logo_file' => 'gt_bank.jpg',
+            'primary' => '#FF6200',
+            'accent' => '#E35600',
+            'prefix' => 'GTBXFER',
+        ],
+        '030' => [
+            'slug' => 'heritage',
+            'name' => 'Heritage Bank',
+            'account_table' => 'heritage_bank_account_settings',
+            'tx_table' => 'heritage_bank_transactions',
+            'fcm' => 'heritage',
+            'logo_file' => 'heritage_bank.jpeg',
+            'primary' => '#006B3F',
+            'accent' => '#008C52',
+            'prefix' => 'HERXFER',
+        ],
+        '301' => [
+            'slug' => 'jaiz',
+            'name' => 'Jaiz Bank',
+            'account_table' => 'jaiz_bank_account_settings',
+            'tx_table' => 'jaiz_bank_transactions',
+            'fcm' => 'jaiz',
+            'logo_file' => 'jaiz_bank.jpg',
+            'primary' => '#006B3F',
+            'accent' => '#8CC63F',
+            'prefix' => 'JAZXFER',
+        ],
+        '082' => [
+            'slug' => 'keystone',
+            'name' => 'Keystone Bank',
+            'account_table' => 'keystone_bank_account_settings',
+            'tx_table' => 'keystone_bank_transactions',
+            'fcm' => 'keystone',
+            'logo_file' => 'keystone_bank.jpeg',
+            'primary' => '#1B4F72',
+            'accent' => '#2874A6',
+            'prefix' => 'KEYXFER',
+        ],
+        '232' => [
+            'slug' => 'sterling',
+            'name' => 'Sterling Bank',
+            'account_table' => 'sterling_bank_account_settings',
+            'tx_table' => 'sterling_bank_transactions',
+            'fcm' => 'sterling',
+            'logo_file' => 'sterling_bank.jpg',
+            'primary' => '#E31C23',
+            'accent' => '#B31218',
+            'prefix' => 'STLXFER',
+        ],
+        '032' => [
+            'slug' => 'union',
+            'name' => 'Union Bank',
+            'account_table' => 'union_bank_account_settings',
+            'tx_table' => 'union_bank_transactions',
+            'fcm' => 'union',
+            'logo_file' => 'union_bank.png',
+            'primary' => '#008751',
+            'accent' => '#00A651',
+            'prefix' => 'UNIXFER',
+        ],
+        '215' => [
+            'slug' => 'unity',
+            'name' => 'Unity Bank',
+            'account_table' => 'unity_bank_account_settings',
+            'tx_table' => 'unity_bank_transactions',
+            'fcm' => 'unity',
+            'logo_file' => 'unity_bank.jpg',
+            'primary' => '#007A3D',
+            'accent' => '#009B4C',
+            'prefix' => 'UTYXFER',
+        ],
+        '50211' => [
+            'slug' => 'kuda',
+            'name' => 'Kuda Bank',
+            'account_table' => 'kuda_bank_account_settings',
+            'tx_table' => 'kuda_bank_transactions',
+            'fcm' => 'kuda',
+            'logo_file' => 'kuda_bank.jpeg',
+            'primary' => '#40196D',
+            'accent' => '#5B2C8A',
+            'prefix' => 'KUDXFER',
+        ],
+        '999992' => [
+            'slug' => 'opay',
+            'name' => 'OPay',
+            'account_table' => 'opay_account_settings',
+            'tx_table' => 'opay_transactions',
+            'fcm' => 'opay',
+            'logo_file' => 'opay.jpeg',
+            'primary' => '#1DCF9A',
+            'accent' => '#00B876',
+            'prefix' => 'OPYXFER',
+        ],
+        '090405' => [
+            'slug' => 'moniepoint',
+            'name' => 'Moniepoint',
+            'account_table' => 'moniepoint_account_settings',
+            'tx_table' => 'moniepoint_transactions',
+            'fcm' => 'moniepoint',
+            'logo_file' => 'moniepoint.jpeg',
+            'primary' => '#1A1F71',
+            'accent' => '#0066F5',
+            'prefix' => 'MPTXFER',
+        ],
+        '100033' => [
+            'slug' => 'palmpay',
+            'name' => 'PalmPay',
+            'account_table' => 'palmpay_account_settings',
+            'tx_table' => 'palmpay_transactions',
+            'fcm' => 'palmpay',
+            'logo_file' => 'palmpay.jpg',
+            'primary' => '#6C2BD9',
+            'accent' => '#8B5CF6',
+            'prefix' => 'PPYXFER',
+        ],
     ];
 }
 
@@ -113,41 +234,49 @@ function bankKitResolve(?string $code): array
 function bankKitEnsure(PDO $pdo): void
 {
     ensurePolarisStanbicSchema($pdo);
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fidelity_bank_account_settings` (
-        `id` int(11) NOT NULL AUTO_INCREMENT,
-        `account_name` varchar(255) NOT NULL DEFAULT 'AUTOGRAPH CONSTRUCTION LIMITED',
-        `account_number` varchar(50) NOT NULL DEFAULT '0702090307',
-        `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
-        `created_at` timestamp NULL DEFAULT current_timestamp(),
-        `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-        PRIMARY KEY (`id`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fidelity_bank_transactions` (
-        `id` int(11) NOT NULL AUTO_INCREMENT,
-        `reference` varchar(50) NOT NULL,
-        `session_id` varchar(64) DEFAULT NULL,
-        `reference_id` varchar(64) DEFAULT NULL,
-        `amount` decimal(15,2) NOT NULL,
-        `currency` varchar(10) NOT NULL DEFAULT 'NGN',
-        `beneficiary_name` varchar(255) NOT NULL,
-        `beneficiary_bank` varchar(255) NOT NULL,
-        `beneficiary_account` varchar(50) NOT NULL,
-        `sender_account` varchar(50) NOT NULL,
-        `sender_name` varchar(255) NOT NULL,
-        `purpose` varchar(500) DEFAULT NULL,
-        `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
-        `transaction_date` timestamp NULL DEFAULT current_timestamp(),
-        `created_at` timestamp NULL DEFAULT current_timestamp(),
-        PRIMARY KEY (`id`),
-        UNIQUE KEY `reference` (`reference`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $seed = $pdo->prepare("INSERT INTO `bank_status` (`bank_code`, `bank_name`, `status`) VALUES (?, ?, 'full_logs') ON DUPLICATE KEY UPDATE `bank_name` = VALUES(`bank_name`)");
-    $seed->execute(['070', 'Fidelity Bank']);
 
-    foreach (bankKitRegistry() as $bank) {
+    foreach (bankKitRegistry() as $code => $bank) {
         $acc = $bank['account_table'];
         $tx = $bank['tx_table'];
+        $defaultAcct = substr(preg_replace('/\D/', '', $code) . '2090307', 0, 20);
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `{$acc}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `account_name` varchar(255) NOT NULL DEFAULT 'AUTOGRAPH CONSTRUCTION LIMITED',
+            `account_number` varchar(50) NOT NULL DEFAULT '{$defaultAcct}',
+            `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
+            `created_at` timestamp NULL DEFAULT current_timestamp(),
+            `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `{$tx}` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `reference` varchar(50) NOT NULL,
+            `session_id` varchar(64) DEFAULT NULL,
+            `reference_id` varchar(64) DEFAULT NULL,
+            `amount` decimal(15,2) NOT NULL,
+            `currency` varchar(10) NOT NULL DEFAULT 'NGN',
+            `beneficiary_name` varchar(255) NOT NULL,
+            `beneficiary_bank` varchar(255) NOT NULL,
+            `beneficiary_account` varchar(50) NOT NULL,
+            `sender_account` varchar(50) NOT NULL,
+            `sender_name` varchar(255) NOT NULL,
+            `purpose` varchar(500) DEFAULT NULL,
+            `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
+            `transaction_date` timestamp NULL DEFAULT current_timestamp(),
+            `created_at` timestamp NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `reference` (`reference`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        try {
+            $seed->execute([$code, $bank['name']]);
+        } catch (PDOException $e) {
+        }
+
         polarisAddColumnIfMissing($pdo, $acc, 'otp_enabled', 'otp_enabled TINYINT(1) NOT NULL DEFAULT 0');
         polarisAddColumnIfMissing($pdo, $acc, 'hard_token_enabled', 'hard_token_enabled TINYINT(1) NOT NULL DEFAULT 0');
         polarisAddColumnIfMissing($pdo, $acc, 'hard_token', 'hard_token VARCHAR(64) DEFAULT NULL');
