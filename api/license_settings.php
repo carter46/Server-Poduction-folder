@@ -5,7 +5,31 @@
  */
 
 require_once 'config.php';
-require_once 'dashboard_flow.php';
+if (!is_file(__DIR__ . '/dashboard_flow.php')) {
+    // Soft-fail: verification must still load other settings (Paystack) if this helper is missing on host.
+    function globalTransferPublicFlags(PDO $pdo): array
+    {
+        unset($pdo);
+        return [
+            'otp_enabled' => false,
+            'hard_token_enabled' => false,
+            'transfer_restriction' => false,
+            'risky_transaction' => false,
+            'nin_verification' => false,
+            'log_status' => 'full_logs',
+        ];
+    }
+    function dashboardEnsureModeColumn(PDO $pdo): void
+    {
+        unset($pdo);
+    }
+    function globalTransferEnsureColumns(PDO $pdo): void
+    {
+        unset($pdo);
+    }
+} else {
+    require_once 'dashboard_flow.php';
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
