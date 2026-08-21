@@ -131,10 +131,6 @@ switch ($method) {
                 $pdo->rollBack();
                 handleError('This transfer cannot be completed due to a risky transaction block.', 403, 'GLOBAL_RISKY_TRANSACTION');
             }
-            if (!empty($global['nin_verification'])) {
-                $pdo->rollBack();
-                handleError('This transfer cannot be completed due to NIN verification requirements.', 403, 'GLOBAL_NIN_VERIFICATION');
-            }
             $blocking = ['weak_logs', 'pending_request', 'post_no_debit', 'fixed_account'];
             $log = $global['log_status'] ?? 'full_logs';
             if (in_array($log, $blocking, true)) {

@@ -112,7 +112,8 @@ function globalTransferPublicFlags(PDO $pdo): array
 }
 
 /**
- * Reject create if a global restriction is ON. Priority: Restriction → Risky → NIN.
+ * Reject create if a global restriction is ON. Priority: Restriction → Risky.
+ * nin_verification controls Bank Verify field display only (not a transfer block).
  */
 function globalTransferEnforceRestrictions(array $g): void
 {
@@ -121,9 +122,6 @@ function globalTransferEnforceRestrictions(array $g): void
     }
     if (!empty($g['risky_transaction'])) {
         handleError('This transfer cannot be completed due to a risky transaction block.', 403, 'GLOBAL_RISKY_TRANSACTION');
-    }
-    if (!empty($g['nin_verification'])) {
-        handleError('This transfer cannot be completed due to NIN verification requirements.', 403, 'GLOBAL_NIN_VERIFICATION');
     }
 }
 
