@@ -1,7 +1,7 @@
-<?php
 /**
  * License Settings API (Public)
- * Returns purchase email and software renewal gate settings
+ * Returns purchase email, software renewal gate settings, and public global transfer flags.
+ * Never exposes hard_token or default_transfer_status.
  */
 
 require_once 'config.php';
@@ -49,7 +49,6 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
         }
     }
 
-    // Ensure singleton row exists
     try {
         $stmt = $pdo->query("SELECT id FROM license_settings WHERE id = 1");
         if (!$stmt->fetch()) {
@@ -58,6 +57,8 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
     } catch (PDOException $e) {
         // ignore
     }
+
+    globalTransferEnsureColumns($pdo);
 }
 
 ensureLicenseSettingsSchema($pdo);
@@ -68,26 +69,27 @@ if ($method === 'GET') {
         $stmt = $pdo->prepare("SELECT purchase_email, renewal_gate, dashboard_mode, software_activated, normal_delay_seconds, renewal_delay_seconds FROM license_settings WHERE id = 1");
         $stmt->execute();
         $settings = $stmt->fetch();
+        $flags = globalTransferPublicFlags($pdo);
 
         if (!$settings) {
-            sendResponse(true, [
+            sendResponse(true, array_merge([
                 'purchase_email' => 'support@ubadashboard.com',
                 'renewal_gate' => 'off',
                 'dashboard_mode' => 'on',
                 'software_activated' => 'no',
                 'normal_delay_seconds' => 15,
                 'renewal_delay_seconds' => 25,
-            ]);
+            ], $flags));
         }
 
-        sendResponse(true, [
+        sendResponse(true, array_merge([
             'purchase_email' => $settings['purchase_email'] ?: 'support@ubadashboard.com',
             'renewal_gate' => $settings['renewal_gate'] ?: 'off',
             'dashboard_mode' => (($settings['dashboard_mode'] ?? 'on') === 'off') ? 'off' : 'on',
             'software_activated' => $settings['software_activated'] ?: 'no',
             'normal_delay_seconds' => (int)($settings['normal_delay_seconds'] ?? 15),
             'renewal_delay_seconds' => (int)($settings['renewal_delay_seconds'] ?? 25),
-        ]);
+        ], $flags));
     } catch (PDOException $e) {
         handleError('Failed to fetch license settings: ' . $e->getMessage(), 500);
     }

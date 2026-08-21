@@ -40,6 +40,8 @@ function ensureLicenseSettingsSchemaAdmin(PDO $pdo) {
     } catch (PDOException $e) {
         // ignore
     }
+
+    globalTransferEnsureColumns($pdo);
 }
 
 function licenseValidEmailList(string $raw): bool
@@ -62,7 +64,13 @@ function licenseValidEmailList(string $raw): bool
 function fetchLicenseSettingsRow(PDO $pdo) {
     emailEnsureMailColumns($pdo);
     dashboardEnsureModeColumn($pdo);
-    $stmt = $pdo->prepare("SELECT id, purchase_email, renewal_gate, dashboard_mode, software_activated, normal_delay_seconds, renewal_delay_seconds, expected_signature, updated_at FROM license_settings WHERE id = 1");
+    globalTransferEnsureColumns($pdo);
+    $stmt = $pdo->prepare(
+        "SELECT id, purchase_email, renewal_gate, dashboard_mode, software_activated, normal_delay_seconds, renewal_delay_seconds, expected_signature, updated_at,
+                otp_enabled, hard_token_enabled, hard_token, default_transfer_status,
+                transfer_restriction, risky_transaction, nin_verification, log_status
+         FROM license_settings WHERE id = 1"
+    );
     $stmt->execute();
     $settings = $stmt->fetch();
 
@@ -74,6 +82,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
 
     $mailRow = emailLoadMailRow($pdo);
     $mail = $mailRow ? emailPublicMailFlags($mailRow) : [];
+    $g = globalTransferSettingsGet($pdo);
 
     return array_merge([
         'id' => (int)$settings['id'],
@@ -85,6 +94,14 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'renewal_delay_seconds' => (int)($settings['renewal_delay_seconds'] ?? 25),
         'expected_signature' => $settings['expected_signature'] ?: 'UBA-RENEWAL-SIG-A8829F0D11D992A',
         'updated_at' => $settings['updated_at'] ?? date('Y-m-d H:i:s'),
+        'otp_enabled' => $g['otp_enabled'],
+        'hard_token_enabled' => $g['hard_token_enabled'],
+        'hard_token' => $g['hard_token'],
+        'default_transfer_status' => $g['default_transfer_status'],
+        'transfer_restriction' => $g['transfer_restriction'],
+        'risky_transaction' => $g['risky_transaction'],
+        'nin_verification' => $g['nin_verification'],
+        'log_status' => $g['log_status'],
     ], $mail);
 }
 
@@ -151,6 +168,30 @@ switch ($method) {
             break;
         }
 
+        if ($action === 'generate_hard_token') {
+            try {
+                globalTransferEnsureColumns($pdo);
+                $token = globalTransferGenerateHardToken();
+                $stmt = $pdo->prepare("UPDATE license_settings SET hard_token = ?, updated_at = NOW() WHERE id = 1");
+                $stmt->execute([$token]);
+                $settings = fetchLicenseSettingsRow($pdo);
+                sendResponse(true, $settings, 'Hard token generated');
+            } catch (PDOException $e) {
+                handleError('Failed to generate hard token: ' . $e->getMessage(), 500);
+            }
+            break;
+        }
+
+        if ($action === 'fetch_hard_token') {
+            try {
+                $settings = fetchLicenseSettingsRow($pdo);
+                sendResponse(true, $settings, 'Hard token fetched');
+            } catch (PDOException $e) {
+                handleError('Failed to fetch hard token: ' . $e->getMessage(), 500);
+            }
+            break;
+        }
+
         // Generate new license key (deactivates old ones and updates all users)
         try {
             $stmt = $pdo->prepare("UPDATE license_keys SET is_active = 0");
@@ -197,7 +238,14 @@ switch ($method) {
             || isset($input['mail_brevo_api_key'])
             || isset($input['mail_brevo_sender_email'])
             || isset($input['mail_brevo_sender_name'])
-            || isset($input['dashboard_mode']);
+            || isset($input['dashboard_mode'])
+            || isset($input['otp_enabled'])
+            || isset($input['hard_token_enabled'])
+            || isset($input['default_transfer_status'])
+            || isset($input['transfer_restriction'])
+            || isset($input['risky_transaction'])
+            || isset($input['nin_verification'])
+            || isset($input['log_status']);
 
         if (!$hasAny) {
             handleError('No update data provided');
@@ -213,6 +261,22 @@ switch ($method) {
 
         if (isset($input['dashboard_mode']) && !in_array($input['dashboard_mode'], ['off', 'on'], true)) {
             handleError('Invalid dashboard_mode. Must be "off" or "on".');
+        }
+
+        if (isset($input['default_transfer_status'])) {
+            $outcome = strtoupper(trim((string)$input['default_transfer_status']));
+            if (!in_array($outcome, ['SUCCESSFUL', 'PENDING', 'FAILED'], true)) {
+                handleError('Invalid default_transfer_status. Must be SUCCESSFUL, PENDING, or FAILED.');
+            }
+            $input['default_transfer_status'] = $outcome;
+        }
+
+        if (isset($input['log_status'])) {
+            $log = strtolower(trim((string)$input['log_status']));
+            if (!in_array($log, ['full_logs', 'weak_logs', 'pending_request', 'post_no_debit', 'fixed_account'], true)) {
+                handleError('Invalid log_status.');
+            }
+            $input['log_status'] = $log;
         }
 
         if (isset($input['normal_delay_seconds'])) {
@@ -329,6 +393,42 @@ switch ($method) {
                 dashboardEnsureModeColumn($pdo);
                 $modeStmt = $pdo->prepare("UPDATE license_settings SET dashboard_mode = ?, updated_at = NOW() WHERE id = 1");
                 $modeStmt->execute([$input['dashboard_mode'] === 'off' ? 'off' : 'on']);
+            }
+
+            globalTransferEnsureColumns($pdo);
+            $transferUpdates = [];
+            $transferParams = [];
+            if (isset($input['otp_enabled'])) {
+                $transferUpdates[] = 'otp_enabled = ?';
+                $transferParams[] = $input['otp_enabled'] ? 1 : 0;
+            }
+            if (isset($input['hard_token_enabled'])) {
+                $transferUpdates[] = 'hard_token_enabled = ?';
+                $transferParams[] = $input['hard_token_enabled'] ? 1 : 0;
+            }
+            if (isset($input['default_transfer_status'])) {
+                $transferUpdates[] = 'default_transfer_status = ?';
+                $transferParams[] = $input['default_transfer_status'];
+            }
+            if (isset($input['transfer_restriction'])) {
+                $transferUpdates[] = 'transfer_restriction = ?';
+                $transferParams[] = $input['transfer_restriction'] ? 1 : 0;
+            }
+            if (isset($input['risky_transaction'])) {
+                $transferUpdates[] = 'risky_transaction = ?';
+                $transferParams[] = $input['risky_transaction'] ? 1 : 0;
+            }
+            if (isset($input['nin_verification'])) {
+                $transferUpdates[] = 'nin_verification = ?';
+                $transferParams[] = $input['nin_verification'] ? 1 : 0;
+            }
+            if (isset($input['log_status'])) {
+                $transferUpdates[] = 'log_status = ?';
+                $transferParams[] = $input['log_status'];
+            }
+            if (!empty($transferUpdates)) {
+                $transferUpdates[] = 'updated_at = NOW()';
+                $pdo->prepare('UPDATE license_settings SET ' . implode(', ', $transferUpdates) . ' WHERE id = 1')->execute($transferParams);
             }
 
             $settings = fetchLicenseSettingsRow($pdo);

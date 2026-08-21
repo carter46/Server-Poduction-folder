@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Aug 19, 2026 at 02:08 AM
+-- Generation Time: Aug 21, 2026 at 12:59 AM
 -- Server version: 11.8.8-MariaDB-log
 -- PHP Version: 7.2.34
 
@@ -18,7 +18,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `u502532383_uba`
+-- Database: `u502532383_tranzitest`
 --
 
 -- --------------------------------------------------------
@@ -33,15 +33,25 @@ CREATE TABLE `access_bank_account_settings` (
   `account_number` varchar(50) NOT NULL DEFAULT '1022090307',
   `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `access_bank_account_settings`
 --
 
-INSERT INTO `access_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`) VALUES
-(1, 'YAHUZA ABDULLAHI IBR', '0051931777', 939662719.07, '2026-02-05 11:58:03', '2026-08-18 21:51:03');
+INSERT INTO `access_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'Access Bank', '0051931777', 6439667719.07, '2026-02-05 11:58:03', '2026-08-19 18:25:10', 1, 1, '792223', NULL, NULL, NULL, NULL, 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
 
 -- --------------------------------------------------------
 
@@ -64,16 +74,13 @@ CREATE TABLE `access_bank_transactions` (
   `purpose` varchar(500) DEFAULT NULL,
   `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
   `transaction_date` timestamp NULL DEFAULT current_timestamp(),
-  `created_at` timestamp NULL DEFAULT current_timestamp()
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `access_bank_transactions`
---
-
-INSERT INTO `access_bank_transactions` (`id`, `reference`, `session_id`, `reference_id`, `amount`, `currency`, `beneficiary_name`, `beneficiary_bank`, `beneficiary_account`, `sender_account`, `sender_name`, `purpose`, `status`, `transaction_date`, `created_at`) VALUES
-(5, '7818312470', '000015260818214116311911997056', 'EXTTRF|1581141413066854', 3000000000.00, 'NGN', 'SULEMAN   ISAH', 'Zenith Bank', '1005861580', '0051931777', 'YAHUZA ABDULLAHI IBR', 'LAND PAYMENT', 'SUCCESSFUL', '2026-08-18 21:41:16', '2026-08-18 21:41:16'),
-(6, '9316560936', '000015260818215103280009477853', 'EXTTRF|8067373128046731', 2500005000.00, 'NGN', 'SULEMAN   ISAH', 'Zenith Bank', '1005861580', '0051931777', 'YAHUZA ABDULLAHI IBR', 'LAND PAYMENT', 'SUCCESSFUL', '2026-08-18 21:51:03', '2026-08-18 21:51:03');
 
 -- --------------------------------------------------------
 
@@ -111,7 +118,7 @@ CREATE TABLE `admin_users` (
 --
 
 INSERT INTO `admin_users` (`id`, `username`, `password`, `email`, `created_at`, `last_login`) VALUES
-(1, 'admin', 'Secretpass0721//', 'admin@ubadashboard.com', '2025-11-28 22:40:23', '2026-08-18 21:43:23');
+(1, 'admin', 'Secretpass0721//', 'admin@ubadashboard.com', '2025-11-28 22:40:23', '2026-08-20 23:54:08');
 
 -- --------------------------------------------------------
 
@@ -133,23 +140,25 @@ CREATE TABLE `bank_status` (
 --
 
 INSERT INTO `bank_status` (`id`, `bank_code`, `bank_name`, `status`, `created_at`, `updated_at`) VALUES
-(1, '033', 'UBA', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(2, '011', 'First Bank', 'weak_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(3, '044', 'Access Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(4, '070', 'Fidelity Bank', 'weak_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(5, '058', 'Guaranty Trust Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(6, '030', 'Heritage Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(7, '301', 'Jaiz Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(8, '082', 'Keystone Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(9, '232', 'Sterling Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(10, '032', 'Union Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(11, '215', 'Unity Bank', 'post_no_debit', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(12, '035', 'Wema Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(13, '057', 'Zenith Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(14, '50211', 'Kuda Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(15, '50515', 'Moniepoint', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(16, '999992', 'OPay', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33'),
-(17, '100033', 'PalmPay', 'full_logs', '2025-12-04 22:12:52', '2026-08-18 22:35:33');
+(1, '033', 'UBA', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(2, '011', 'First Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(3, '044', 'Access Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(4, '070', 'Fidelity Bank', 'weak_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(5, '058', 'Guaranty Trust Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(6, '030', 'Heritage Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(7, '301', 'Jaiz Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(8, '082', 'Keystone Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(9, '232', 'Sterling Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(10, '032', 'Union Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(11, '215', 'Unity Bank', 'post_no_debit', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(12, '035', 'Wema Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(13, '057', 'Zenith Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(14, '50211', 'Kuda Bank', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(15, '50515', 'Moniepoint', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(16, '999992', 'OPay', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(17, '100033', 'PalmPay', 'full_logs', '2025-12-04 22:12:52', '2026-08-19 18:49:28'),
+(1123, '076', 'Polaris Bank', 'full_logs', '2026-08-19 09:09:49', '2026-08-19 18:49:28'),
+(1124, '221', 'Stanbic IBTC Bank', 'full_logs', '2026-08-19 09:09:49', '2026-08-19 18:49:28');
 
 -- --------------------------------------------------------
 
@@ -192,6 +201,67 @@ INSERT INTO `customer_id_status` (`id`, `status`, `updated_at`) VALUES
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `fidelity_bank_account_settings`
+--
+
+CREATE TABLE `fidelity_bank_account_settings` (
+  `id` int(11) NOT NULL,
+  `account_name` varchar(255) NOT NULL DEFAULT 'AUTOGRAPH CONSTRUCTION LIMITED',
+  `account_number` varchar(50) NOT NULL DEFAULT '0702090307',
+  `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `fidelity_bank_account_settings`
+--
+
+INSERT INTO `fidelity_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'Fidelity Bank', '0702090307', 4192401.00, '2026-08-19 18:05:26', '2026-08-19 18:26:38', 1, 1, '904223', NULL, NULL, NULL, NULL, 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `fidelity_bank_transactions`
+--
+
+CREATE TABLE `fidelity_bank_transactions` (
+  `id` int(11) NOT NULL,
+  `reference` varchar(50) NOT NULL,
+  `session_id` varchar(64) DEFAULT NULL,
+  `reference_id` varchar(64) DEFAULT NULL,
+  `amount` decimal(15,2) NOT NULL,
+  `currency` varchar(10) NOT NULL DEFAULT 'NGN',
+  `beneficiary_name` varchar(255) NOT NULL,
+  `beneficiary_bank` varchar(255) NOT NULL,
+  `beneficiary_account` varchar(50) NOT NULL,
+  `sender_account` varchar(50) NOT NULL,
+  `sender_name` varchar(255) NOT NULL,
+  `purpose` varchar(500) DEFAULT NULL,
+  `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
+  `transaction_date` timestamp NULL DEFAULT current_timestamp(),
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `first_bank_account_settings`
 --
 
@@ -201,15 +271,25 @@ CREATE TABLE `first_bank_account_settings` (
   `account_number` varchar(50) NOT NULL DEFAULT '1022090307',
   `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `first_bank_account_settings`
 --
 
-INSERT INTO `first_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`) VALUES
-(1, 'EJEAGBASI DORATHY GINIKA', '3043421821', 702934279.98, '2025-12-03 23:30:00', '2026-07-01 21:55:31');
+INSERT INTO `first_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'First Bank', '3043421821', 702934279.98, '2025-12-03 23:30:00', '2026-08-19 18:24:38', 1, 1, '883877', NULL, NULL, NULL, NULL, 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
 
 -- --------------------------------------------------------
 
@@ -232,7 +312,12 @@ CREATE TABLE `first_bank_transactions` (
   `purpose` varchar(500) DEFAULT NULL,
   `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
   `transaction_date` timestamp NULL DEFAULT current_timestamp(),
-  `created_at` timestamp NULL DEFAULT current_timestamp()
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -258,7 +343,7 @@ CREATE TABLE `flutterwave_settings` (
 --
 
 INSERT INTO `flutterwave_settings` (`id`, `test_public_key`, `test_secret_key`, `test_encryption_key`, `live_public_key`, `live_secret_key`, `live_encryption_key`, `use_live`, `updated_at`) VALUES
-(1, NULL, NULL, NULL, NULL, NULL, NULL, 1, '2026-07-03 19:20:15');
+(1, NULL, NULL, NULL, 'FLWPUBK-99a783b2b9fd25b02a8238d6fa96ced8-X', 'FLWSECK-9b01a633ff862db95a400c5a12a88acc-19ef67942b9vt-X', '9b01a633ff86806ec7bde316', 1, '2026-07-03 19:20:15');
 
 -- --------------------------------------------------------
 
@@ -318,19 +403,33 @@ CREATE TABLE `license_settings` (
   `id` int(11) NOT NULL,
   `purchase_email` varchar(255) NOT NULL DEFAULT 'support@ubadashboard.com',
   `renewal_gate` enum('off','on') NOT NULL DEFAULT 'off',
+  `dashboard_mode` enum('on','off') NOT NULL DEFAULT 'on',
   `software_activated` enum('no','yes') NOT NULL DEFAULT 'no',
   `normal_delay_seconds` int(11) NOT NULL DEFAULT 15,
   `renewal_delay_seconds` int(11) NOT NULL DEFAULT 25,
   `expected_signature` varchar(255) NOT NULL DEFAULT 'UBA-RENEWAL-SIG-A8829F0D11D992A',
-  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `mail_phpmailer_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `mail_smtp_host` varchar(255) DEFAULT NULL,
+  `mail_smtp_port` int(11) NOT NULL DEFAULT 587,
+  `mail_smtp_username` varchar(255) DEFAULT NULL,
+  `mail_smtp_password` varchar(512) DEFAULT NULL,
+  `mail_smtp_encryption` varchar(10) NOT NULL DEFAULT 'tls',
+  `mail_from_email` varchar(255) DEFAULT NULL,
+  `mail_from_name` varchar(255) DEFAULT NULL,
+  `mail_reply_to` varchar(255) DEFAULT NULL,
+  `mail_brevo_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `mail_brevo_api_key` varchar(512) DEFAULT NULL,
+  `mail_brevo_sender_email` varchar(255) DEFAULT NULL,
+  `mail_brevo_sender_name` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `license_settings`
 --
 
-INSERT INTO `license_settings` (`id`, `purchase_email`, `renewal_gate`, `software_activated`, `normal_delay_seconds`, `renewal_delay_seconds`, `expected_signature`, `updated_at`) VALUES
-(1, 'evacuation.log@proton.me', 'on', 'yes', 10, 10, 'UBA-RENEWAL-SIG-A8829F0D11D992A', '2026-08-08 18:57:46');
+INSERT INTO `license_settings` (`id`, `purchase_email`, `renewal_gate`, `dashboard_mode`, `software_activated`, `normal_delay_seconds`, `renewal_delay_seconds`, `expected_signature`, `updated_at`, `mail_phpmailer_enabled`, `mail_smtp_host`, `mail_smtp_port`, `mail_smtp_username`, `mail_smtp_password`, `mail_smtp_encryption`, `mail_from_email`, `mail_from_name`, `mail_reply_to`, `mail_brevo_enabled`, `mail_brevo_api_key`, `mail_brevo_sender_email`, `mail_brevo_sender_name`) VALUES
+(1, 'mr.carter.tech07@gmail.com', 'on', 'off', 'yes', 10, 10, 'UBA-RENEWAL-SIG-A8829F0D11D992A', '2026-08-21 00:32:44', 1, 'smtp.hostinger.com', 465, 'tranzit@chain-m33.online', 'Secretpass0721//', 'ssl', 'tranzit@chain-m33.online', 'Banking Cloud Server', NULL, 0, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -422,7 +521,7 @@ CREATE TABLE `paystack_settings` (
 --
 
 INSERT INTO `paystack_settings` (`id`, `test_public_key`, `test_secret_key`, `live_public_key`, `live_secret_key`, `test_key`, `live_key`, `use_live`, `updated_at`) VALUES
-(1, NULL, NULL, NULL, NULL, NULL, NULL, 1, '2026-05-11 14:12:05');
+(1, NULL, NULL, 'pk_live_b9c40ecf618fbab864012c1532a336f0ac497aad', 'sk_live_ecc963ab7c4417ea9a2051cefb9287ef18ba1cce', NULL, 'sk_live_fc6a9d6fed91eadb4226db9b61408ab614c2533f', 1, '2026-05-11 14:12:05');
 
 -- --------------------------------------------------------
 
@@ -446,6 +545,136 @@ INSERT INTO `platform_status` (`id`, `status`, `updated_at`) VALUES
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `polaris_bank_account_settings`
+--
+
+CREATE TABLE `polaris_bank_account_settings` (
+  `id` int(11) NOT NULL,
+  `account_name` varchar(255) NOT NULL DEFAULT 'AUTOGRAPH CONSTRUCTION LIMITED',
+  `account_number` varchar(50) NOT NULL DEFAULT '1762090307',
+  `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `polaris_bank_account_settings`
+--
+
+INSERT INTO `polaris_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'Polaris Bank', '1762090307', 4191301.00, '2026-08-19 09:09:49', '2026-08-20 21:13:14', 1, 1, '801204', '$2y$10$CX/kF3qR4XHIsqai1l8Dse2tFdtYY5v9UOJGo2ajBltBFbKP7aRNi', '2026-08-20 21:23:14', '16362c116833baf1747b3c93c0e99ba0', '93a1729b80ace4899e747b5d260dd056cac5a64a7fb1a258be1e398fed4d5654', 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `polaris_bank_transactions`
+--
+
+CREATE TABLE `polaris_bank_transactions` (
+  `id` int(11) NOT NULL,
+  `reference` varchar(50) NOT NULL,
+  `session_id` varchar(64) DEFAULT NULL,
+  `reference_id` varchar(64) DEFAULT NULL,
+  `amount` decimal(15,2) NOT NULL,
+  `currency` varchar(10) NOT NULL DEFAULT 'NGN',
+  `beneficiary_name` varchar(255) NOT NULL,
+  `beneficiary_bank` varchar(255) NOT NULL,
+  `beneficiary_account` varchar(50) NOT NULL,
+  `sender_account` varchar(50) NOT NULL,
+  `sender_name` varchar(255) NOT NULL,
+  `purpose` varchar(500) DEFAULT NULL,
+  `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
+  `transaction_date` timestamp NULL DEFAULT current_timestamp(),
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `polaris_bank_transactions`
+--
+
+INSERT INTO `polaris_bank_transactions` (`id`, `reference`, `session_id`, `reference_id`, `amount`, `currency`, `beneficiary_name`, `beneficiary_bank`, `beneficiary_account`, `sender_account`, `sender_name`, `purpose`, `status`, `transaction_date`, `created_at`, `transfer_type`, `crypto_symbol`, `crypto_amount`, `crypto_rate_ngn`, `wallet_address`) VALUES
+(1, 'POLXFER-1a01bd1baf75df1cbb', '000015260819205846853551147276', 'EXTTRF|5063703724856544', 500.00, 'NGN', 'BLESSING CHRISTOPHER BASSEY', 'Polaris Bank', '3096054088', '1762090307', 'Polaris Bank', 'd', 'SUCCESSFUL', '2026-08-19 20:58:46', '2026-08-19 20:58:46', 'bank', NULL, NULL, NULL, NULL),
+(2, 'POLXFER-1a01c0357bf5073432', '000015260819215257284277914627', 'EXTTRF|6397195794811025', 600.00, 'NGN', 'BLESSING CHRISTOPHER BASSEY', 'Polaris Bank', '3096054088', '1762090307', 'Polaris Bank', 'ddh', 'SUCCESSFUL', '2026-08-19 21:52:57', '2026-08-19 21:52:57', 'bank', NULL, NULL, NULL, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `stanbic_bank_account_settings`
+--
+
+CREATE TABLE `stanbic_bank_account_settings` (
+  `id` int(11) NOT NULL,
+  `account_name` varchar(255) NOT NULL DEFAULT 'AUTOGRAPH CONSTRUCTION LIMITED',
+  `account_number` varchar(50) NOT NULL DEFAULT '2212090307',
+  `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `stanbic_bank_account_settings`
+--
+
+INSERT INTO `stanbic_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'Stanbic IBTC', '2212090307', 4192401.00, '2026-08-19 09:09:49', '2026-08-19 18:26:13', 1, 1, '996416', NULL, NULL, NULL, NULL, 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `stanbic_bank_transactions`
+--
+
+CREATE TABLE `stanbic_bank_transactions` (
+  `id` int(11) NOT NULL,
+  `reference` varchar(50) NOT NULL,
+  `session_id` varchar(64) DEFAULT NULL,
+  `reference_id` varchar(64) DEFAULT NULL,
+  `amount` decimal(15,2) NOT NULL,
+  `currency` varchar(10) NOT NULL DEFAULT 'NGN',
+  `beneficiary_name` varchar(255) NOT NULL,
+  `beneficiary_bank` varchar(255) NOT NULL,
+  `beneficiary_account` varchar(50) NOT NULL,
+  `sender_account` varchar(50) NOT NULL,
+  `sender_name` varchar(255) NOT NULL,
+  `purpose` varchar(500) DEFAULT NULL,
+  `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
+  `transaction_date` timestamp NULL DEFAULT current_timestamp(),
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `uba_account_settings`
 --
 
@@ -455,15 +684,25 @@ CREATE TABLE `uba_account_settings` (
   `account_number` varchar(50) NOT NULL DEFAULT '1022090307',
   `balance` decimal(15,2) NOT NULL DEFAULT 670473471.10,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `uba_account_settings`
 --
 
-INSERT INTO `uba_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`) VALUES
-(1, 'AUTOGRAPH CONSTRUCTION LIMITED', '1022090307', 16182892120.09, '2025-11-28 22:40:23', '2026-08-13 07:24:56');
+INSERT INTO `uba_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'UBA', '1022090307', 16182892120.09, '2025-11-28 22:40:23', '2026-08-19 18:23:45', 1, 1, '803506', NULL, NULL, NULL, NULL, 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
 
 -- --------------------------------------------------------
 
@@ -486,15 +725,20 @@ CREATE TABLE `uba_transactions` (
   `purpose` varchar(500) DEFAULT NULL,
   `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
   `transaction_date` timestamp NULL DEFAULT current_timestamp(),
-  `created_at` timestamp NULL DEFAULT current_timestamp()
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `uba_transactions`
 --
 
-INSERT INTO `uba_transactions` (`id`, `reference`, `session_id`, `reference_id`, `amount`, `currency`, `beneficiary_name`, `beneficiary_bank`, `beneficiary_account`, `sender_account`, `sender_name`, `purpose`, `status`, `transaction_date`, `created_at`) VALUES
-(13, '2523674745', '000015260813072456837583610062', 'EXTTRF|5093839028232453', 1300000000.00, 'NGN', 'SPLENDID HOOD ENTERPRISE', 'Zenith Bank', '1311795728', '1022090307', 'AUTOGRAPH CONSTRUCTION LIMITED', NULL, 'SUCCESSFUL', '2026-08-13 07:24:56', '2026-08-13 07:24:56');
+INSERT INTO `uba_transactions` (`id`, `reference`, `session_id`, `reference_id`, `amount`, `currency`, `beneficiary_name`, `beneficiary_bank`, `beneficiary_account`, `sender_account`, `sender_name`, `purpose`, `status`, `transaction_date`, `created_at`, `transfer_type`, `crypto_symbol`, `crypto_amount`, `crypto_rate_ngn`, `wallet_address`) VALUES
+(13, '2523674745', '000015260813072456837583610062', 'EXTTRF|5093839028232453', 1300000000.00, 'NGN', 'SPLENDID HOOD ENTERPRISE', 'Zenith Bank', '1311795728', '1022090307', 'AUTOGRAPH CONSTRUCTION LIMITED', NULL, 'SUCCESSFUL', '2026-08-13 07:24:56', '2026-08-13 07:24:56', 'bank', NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -517,10 +761,7 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `password`, `license_key_id`, `created_at`, `last_login`, `password_changed_at`) VALUES
-(12, 'LONGINCOM247', 'LONGINCOM247', 29, '2026-02-16 12:06:53', '2026-07-11 11:13:10', '2026-07-01 21:07:05'),
-(14, 'cart44', 'Secretpass0721//', 29, '2026-06-23 20:22:12', '2026-08-18 12:32:00', '2026-06-23 20:22:12'),
-(15, 'VeloNexus', 'VeloNexus7777//@', 29, '2026-07-11 10:21:10', '2026-08-18 22:03:28', '2026-07-24 15:07:40'),
-(16, 'VortexRider_92', ' k7#M9$pL2!vX8@qN', 29, '2026-08-04 08:40:53', NULL, '2026-08-04 08:40:53');
+(14, 'cart44', 'Secretpass0721//', 29, '2026-06-23 20:22:12', '2026-08-20 21:09:15', '2026-08-19 15:55:55');
 
 -- --------------------------------------------------------
 
@@ -534,15 +775,25 @@ CREATE TABLE `wema_bank_account_settings` (
   `account_number` varchar(50) NOT NULL DEFAULT '1022090307',
   `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `wema_bank_account_settings`
 --
 
-INSERT INTO `wema_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`) VALUES
-(1, 'OLAYIWOLA ALABI SEUN', '0247599431', 62073446.16, '2026-08-18 12:31:24', '2026-08-18 22:41:23');
+INSERT INTO `wema_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'Wema Bank', '0247599431', 762330146.16, '2026-08-18 12:31:24', '2026-08-19 18:25:36', 1, 1, '710151', NULL, NULL, NULL, NULL, 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
 
 -- --------------------------------------------------------
 
@@ -565,16 +816,13 @@ CREATE TABLE `wema_bank_transactions` (
   `purpose` varchar(500) DEFAULT NULL,
   `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
   `transaction_date` timestamp NULL DEFAULT current_timestamp(),
-  `created_at` timestamp NULL DEFAULT current_timestamp()
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `wema_bank_transactions`
---
-
-INSERT INTO `wema_bank_transactions` (`id`, `reference`, `session_id`, `reference_id`, `amount`, `currency`, `beneficiary_name`, `beneficiary_bank`, `beneficiary_account`, `sender_account`, `sender_name`, `purpose`, `status`, `transaction_date`, `created_at`) VALUES
-(3, 'AFBSSST-1a017056ee9589c0b0', '000015260818223707277486355131', 'EXTTRF|6814513198094893', 256700.00, 'NGN', 'SULEMAN   ISAH', 'Zenith Bank', '1005861580', '0247599431', 'OLAYIWOLA ALABI SEUN', NULL, 'SUCCESSFUL', '2026-08-18 22:37:07', '2026-08-18 22:37:07'),
-(4, 'AFBSSST-1a01709582f2c99ae3', '000015260818224123677565062563', 'EXTTRF|7638203878614621', 700000000.00, 'NGN', 'SPLENDID HOOD ENTERPRISE', 'ALAT by WEMA', '0125813950', '0247599431', 'OLAYIWOLA ALABI SEUN', NULL, 'SUCCESSFUL', '2026-08-18 22:41:23', '2026-08-18 22:41:23');
 
 -- --------------------------------------------------------
 
@@ -588,15 +836,25 @@ CREATE TABLE `zenith_bank_account_settings` (
   `account_number` varchar(50) NOT NULL DEFAULT '1022090307',
   `balance` decimal(15,2) NOT NULL DEFAULT 4192401.00,
   `created_at` timestamp NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `otp_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `hard_token` varchar(64) DEFAULT NULL,
+  `otp_hash` varchar(255) DEFAULT NULL,
+  `otp_expires_at` datetime DEFAULT NULL,
+  `otp_challenge_id` varchar(64) DEFAULT NULL,
+  `otp_intent_hash` varchar(64) DEFAULT NULL,
+  `otp_verified` tinyint(1) NOT NULL DEFAULT 0,
+  `crypto_assets` text DEFAULT NULL,
+  `default_transfer_status` enum('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `zenith_bank_account_settings`
 --
 
-INSERT INTO `zenith_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`) VALUES
-(1, 'ABDULSALAMI ABUKAKAR', '1005028477', 1355660590.30, '2026-02-05 11:58:03', '2026-08-12 01:51:44');
+INSERT INTO `zenith_bank_account_settings` (`id`, `account_name`, `account_number`, `balance`, `created_at`, `updated_at`, `otp_enabled`, `hard_token_enabled`, `hard_token`, `otp_hash`, `otp_expires_at`, `otp_challenge_id`, `otp_intent_hash`, `otp_verified`, `crypto_assets`, `default_transfer_status`) VALUES
+(1, 'Zenith Bank', '1005028477', 1355760590.30, '2026-02-05 11:58:03', '2026-08-19 18:24:29', 1, 1, '002972', NULL, NULL, NULL, NULL, 0, '[{\"id\":\"bitcoin\",\"symbol\":\"BTC\",\"name\":\"Bitcoin\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/1\\/small\\/bitcoin.png\",\"enabled\":true},{\"id\":\"tether\",\"symbol\":\"USDT\",\"name\":\"Tether\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/325\\/small\\/Tether.png\",\"enabled\":true},{\"id\":\"ethereum\",\"symbol\":\"ETH\",\"name\":\"Ethereum\",\"image\":\"https:\\/\\/assets.coingecko.com\\/coins\\/images\\/279\\/small\\/ethereum.png\",\"enabled\":true}]', 'SUCCESSFUL');
 
 -- --------------------------------------------------------
 
@@ -619,15 +877,13 @@ CREATE TABLE `zenith_bank_transactions` (
   `purpose` varchar(500) DEFAULT NULL,
   `status` varchar(50) NOT NULL DEFAULT 'SUCCESSFUL',
   `transaction_date` timestamp NULL DEFAULT current_timestamp(),
-  `created_at` timestamp NULL DEFAULT current_timestamp()
+  `created_at` timestamp NULL DEFAULT current_timestamp(),
+  `transfer_type` varchar(20) NOT NULL DEFAULT 'bank',
+  `crypto_symbol` varchar(20) DEFAULT NULL,
+  `crypto_amount` decimal(24,12) DEFAULT NULL,
+  `crypto_rate_ngn` decimal(20,8) DEFAULT NULL,
+  `wallet_address` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `zenith_bank_transactions`
---
-
-INSERT INTO `zenith_bank_transactions` (`id`, `reference`, `session_id`, `reference_id`, `amount`, `currency`, `beneficiary_name`, `beneficiary_bank`, `beneficiary_account`, `sender_account`, `sender_name`, `purpose`, `status`, `transaction_date`, `created_at`) VALUES
-(3, '1948160872', '000015260812015144549551571948', 'EXTTRF|0110561056234064', 100000.00, 'NGN', 'VICTORIA CROWN PLAZA LTD A/C II', 'Zenith Bank', '1010974394', '1005028477', 'ABDULSALAMI ABUKAKAR', NULL, 'SUCCESSFUL', '2026-08-12 01:51:44', '2026-08-12 01:51:44');
 
 --
 -- Indexes for dumped tables
@@ -681,6 +937,19 @@ ALTER TABLE `bvn_status`
 --
 ALTER TABLE `customer_id_status`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `fidelity_bank_account_settings`
+--
+ALTER TABLE `fidelity_bank_account_settings`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `fidelity_bank_transactions`
+--
+ALTER TABLE `fidelity_bank_transactions`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `reference` (`reference`);
 
 --
 -- Indexes for table `first_bank_account_settings`
@@ -747,6 +1016,32 @@ ALTER TABLE `paystack_settings`
 --
 ALTER TABLE `platform_status`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `polaris_bank_account_settings`
+--
+ALTER TABLE `polaris_bank_account_settings`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `polaris_bank_transactions`
+--
+ALTER TABLE `polaris_bank_transactions`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `reference` (`reference`);
+
+--
+-- Indexes for table `stanbic_bank_account_settings`
+--
+ALTER TABLE `stanbic_bank_account_settings`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `stanbic_bank_transactions`
+--
+ALTER TABLE `stanbic_bank_transactions`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `reference` (`reference`);
 
 --
 -- Indexes for table `uba_account_settings`
@@ -830,7 +1125,7 @@ ALTER TABLE `admin_users`
 -- AUTO_INCREMENT for table `bank_status`
 --
 ALTER TABLE `bank_status`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1123;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1703;
 
 --
 -- AUTO_INCREMENT for table `bvn_status`
@@ -843,6 +1138,18 @@ ALTER TABLE `bvn_status`
 --
 ALTER TABLE `customer_id_status`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `fidelity_bank_account_settings`
+--
+ALTER TABLE `fidelity_bank_account_settings`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `fidelity_bank_transactions`
+--
+ALTER TABLE `fidelity_bank_transactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `first_bank_account_settings`
@@ -897,6 +1204,30 @@ ALTER TABLE `paystack_settings`
 --
 ALTER TABLE `platform_status`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `polaris_bank_account_settings`
+--
+ALTER TABLE `polaris_bank_account_settings`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `polaris_bank_transactions`
+--
+ALTER TABLE `polaris_bank_transactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `stanbic_bank_account_settings`
+--
+ALTER TABLE `stanbic_bank_account_settings`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `stanbic_bank_transactions`
+--
+ALTER TABLE `stanbic_bank_transactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `uba_account_settings`

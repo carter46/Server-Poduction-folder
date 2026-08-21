@@ -56,39 +56,33 @@ switch ($method) {
             handleError('Polaris account not configured', 500);
         }
 
-        $statusStmt = $pdo->prepare('SELECT status FROM bank_status WHERE bank_code = ? LIMIT 1');
-        $statusStmt->execute(['076']);
-        $statusRow = $statusStmt->fetch();
-        $bankStatus = $statusRow ? strtolower(trim((string)$statusRow['status'])) : '';
-        $blocking = ['weak_logs', 'pending_request', 'post_no_debit', 'fixed_account'];
-        if (in_array($bankStatus, $blocking, true)) {
-            handleError('This transfer cannot be completed for the current account status');
-        }
+        // Re-read global settings immediately before authorize/create (never trust FE GET).
+        $global = globalTransferSettingsGet($pdo);
+        globalTransferEnforceRestrictions($global);
+        globalTransferEnforceLogStatus($global);
 
-        if (intval($account['otp_enabled'] ?? 0) === 1) {
-            if (!dashboardPreTransferOtpSatisfies($pdo, '076')) {
-                $challengeId = trim((string)($input['otp_challenge_id'] ?? ''));
-                $destination = $transferType === 'crypto'
-                    ? trim((string)($input['wallet_address'] ?? ''))
-                    : trim((string)($input['beneficiary_account'] ?? ''));
-                $intentHash = polarisIntentHash($transferType, $destination, $amount);
-                if ($challengeId === ''
-                    || !hash_equals((string)($account['otp_challenge_id'] ?? ''), $challengeId)
-                    || intval($account['otp_verified'] ?? 0) !== 1
-                    || !hash_equals((string)($account['otp_intent_hash'] ?? ''), $intentHash)
-                ) {
-                    handleError('OTP verification is required before this transfer can continue');
-                }
-                $expiresAt = (string)($account['otp_expires_at'] ?? '');
-                if ($expiresAt === '' || strtotime($expiresAt) < time()) {
-                    handleError('OTP has expired');
-                }
+        if (!empty($global['otp_enabled'])) {
+            $challengeId = trim((string)($input['otp_challenge_id'] ?? ''));
+            $destination = $transferType === 'crypto'
+                ? trim((string)($input['wallet_address'] ?? ''))
+                : trim((string)($input['beneficiary_account'] ?? ''));
+            $intentHash = polarisIntentHash($transferType, $destination, $amount);
+            if ($challengeId === ''
+                || !hash_equals((string)($account['otp_challenge_id'] ?? ''), $challengeId)
+                || intval($account['otp_verified'] ?? 0) !== 1
+                || !hash_equals((string)($account['otp_intent_hash'] ?? ''), $intentHash)
+            ) {
+                handleError('OTP verification is required before this transfer can continue');
+            }
+            $expiresAt = (string)($account['otp_expires_at'] ?? '');
+            if ($expiresAt === '' || strtotime($expiresAt) < time()) {
+                handleError('OTP has expired');
             }
         }
 
-        if (intval($account['hard_token_enabled'] ?? 0) === 1) {
+        if (!empty($global['hard_token_enabled'])) {
             $postedToken = trim((string)($input['hard_token'] ?? ''));
-            $storedToken = trim((string)($account['hard_token'] ?? ''));
+            $storedToken = trim((string)($global['hard_token'] ?? ''));
             if ($storedToken === '' || $postedToken === '' || !hash_equals($storedToken, $postedToken)) {
                 handleError('Hard token is incorrect');
             }
@@ -149,12 +143,36 @@ switch ($method) {
                 $pdo->rollBack();
                 handleError('Polaris account not configured', 500);
             }
-            if (floatval($locked['balance']) < $amount && transactionStatusHoldsFunds(normalizeTransactionStatus($locked['default_transfer_status'] ?? 'SUCCESSFUL') ?: 'SUCCESSFUL')) {
+            $global = globalTransferSettingsGet($pdo);
+            if (!empty($global['transfer_restriction'])) {
+                $pdo->rollBack();
+                handleError('This transfer cannot be completed due to a transfer restriction.', 403, 'GLOBAL_TRANSFER_RESTRICTION');
+            }
+            if (!empty($global['risky_transaction'])) {
+                $pdo->rollBack();
+                handleError('This transfer cannot be completed due to a risky transaction block.', 403, 'GLOBAL_RISKY_TRANSACTION');
+            }
+            if (!empty($global['nin_verification'])) {
+                $pdo->rollBack();
+                handleError('This transfer cannot be completed due to NIN verification requirements.', 403, 'GLOBAL_NIN_VERIFICATION');
+            }
+            $blocking = ['weak_logs', 'pending_request', 'post_no_debit', 'fixed_account'];
+            $log = $global['log_status'] ?? 'full_logs';
+            if (in_array($log, $blocking, true)) {
+                $pdo->rollBack();
+                handleError(
+                    'This transfer cannot be completed for the current account status',
+                    403,
+                    'GLOBAL_LOG_STATUS',
+                    ['log_status' => $log]
+                );
+            }
+            if (floatval($locked['balance']) < $amount && transactionStatusHoldsFunds(normalizeTransactionStatus($global['default_transfer_status'] ?? 'SUCCESSFUL') ?: 'SUCCESSFUL')) {
                 $pdo->rollBack();
                 handleError('Insufficient balance');
             }
 
-            $txnStatus = normalizeTransactionStatus($locked['default_transfer_status'] ?? 'SUCCESSFUL') ?: 'SUCCESSFUL';
+            $txnStatus = normalizeTransactionStatus($global['default_transfer_status'] ?? 'SUCCESSFUL') ?: 'SUCCESSFUL';
             $holdsFunds = transactionStatusHoldsFunds($txnStatus);
 
             $hasReceiptIds = txReceiptIdsColumnsExist($pdo, 'polaris_bank_transactions');
@@ -191,7 +209,7 @@ switch ($method) {
             $stmt->execute($params);
             $transactionId = intval($pdo->lastInsertId());
 
-            if (intval($account['otp_enabled'] ?? 0) === 1) {
+            if (!empty($global['otp_enabled'])) {
                 $clear = $pdo->prepare(
                     "UPDATE polaris_bank_account_settings
                      SET otp_verified = 0, otp_hash = NULL, otp_challenge_id = NULL, otp_intent_hash = NULL, otp_expires_at = NULL, updated_at = NOW()
@@ -206,7 +224,7 @@ switch ($method) {
             }
 
             $pdo->commit();
-            dashboardConsumePreTransferOtp('076');
+            dashboardConsumeVerifiedPrefill('076');
 
             $stmt = $pdo->prepare("SELECT * FROM polaris_bank_transactions WHERE id = ?");
             $stmt->execute([$transactionId]);

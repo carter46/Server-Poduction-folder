@@ -19,36 +19,30 @@ if (!$account) {
 }
 
 if ($action === 'verify_token') {
-    if (intval($account['hard_token_enabled'] ?? 0) !== 1) {
+    $global = globalTransferSettingsGet($pdo);
+    if (empty($global['hard_token_enabled'])) {
         sendResponse(true, ['verified' => true], 'Hard token not required');
     }
     $posted = trim((string)($input['hard_token'] ?? ''));
-    $stored = trim((string)($account['hard_token'] ?? ''));
+    $stored = trim((string)($global['hard_token'] ?? ''));
     if ($stored === '' || $posted === '' || !hash_equals($stored, $posted)) {
         handleError('Hard token is incorrect');
     }
     sendResponse(true, ['verified' => true], 'Hard token verified');
 }
 
-if (intval($account['otp_enabled'] ?? 0) !== 1) {
-    handleError('OTP is not enabled for this account');
+$global = globalTransferSettingsGet($pdo);
+if (empty($global['otp_enabled'])) {
+    handleError('OTP is not enabled');
 }
 
 $transferType = strtolower(trim((string)($input['transfer_type'] ?? '')));
 $destination = trim((string)($input['destination'] ?? ''));
 $amount = trim((string)($input['amount'] ?? ''));
-if ($transferType === 'verify') {
-    $accountNumber = preg_replace('/\D/', '', $destination);
-    if (strlen($accountNumber) !== 10) {
-        handleError('Invalid transfer attempt details');
-    }
-    $intentHash = polarisVerifyIntentHash($bank['code'], $accountNumber);
-} else {
-    if (!in_array($transferType, ['bank', 'crypto'], true) || $destination === '' || !is_numeric($amount) || floatval($amount) <= 0) {
-        handleError('Invalid transfer attempt details');
-    }
-    $intentHash = polarisIntentHash($transferType, $destination, $amount);
+if (!in_array($transferType, ['bank', 'crypto'], true) || $destination === '' || !is_numeric($amount) || floatval($amount) <= 0) {
+    handleError('Invalid transfer attempt details');
 }
+$intentHash = polarisIntentHash($transferType, $destination, $amount);
 
 if ($action === 'send') {
     $otp = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -111,10 +105,6 @@ if ($action === 'verify') {
         handleError('Incorrect OTP');
     }
     $pdo->prepare("UPDATE `{$table}` SET otp_verified = 1, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
-    if ($transferType === 'verify' && dashboardModeGet($pdo) === 'off') {
-        dashboardRequireUser();
-        dashboardMarkPreTransferOtp($bank['code'], $challengeId, $accountNumber);
-    }
     sendResponse(true, ['challenge_id' => $challengeId, 'verified' => true], 'OTP verified');
 }
 
