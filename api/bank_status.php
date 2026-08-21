@@ -1,7 +1,8 @@
 <?php
 /**
- * Bank Status API
- * Handles bank status management (Full Logs, Weak Logs, Pending Request)
+ * Bank Status API — DEPRECATED
+ * Runtime log status is license_settings.log_status (Global Settings).
+ * This endpoint is read-only for legacy inspection; writes are rejected.
  */
 
 require_once 'config.php';
@@ -9,7 +10,6 @@ require_once 'config.php';
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
 
-// Bank name mapping
 $bankNames = [
     '033' => 'UBA',
     '011' => 'First Bank',
@@ -32,7 +32,6 @@ $bankNames = [
     '100033' => 'PalmPay',
 ];
 
-// Create table if it doesn't exist
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS bank_status (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -42,41 +41,21 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )");
-    
-    // Initialize with default values if table is empty
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM bank_status");
-    $result = $stmt->fetch();
-    if ($result['count'] == 0) {
-        $insertStmt = $pdo->prepare("INSERT INTO bank_status (bank_code, bank_name, status) VALUES (?, ?, 'full_logs')");
-        foreach ($bankNames as $code => $name) {
-            $insertStmt->execute([$code, $name]);
-        }
-    }
 } catch (PDOException $e) {
-    // Table might already exist, continue
+    // Table might already exist
 }
 
 switch ($method) {
     case 'GET':
-        // Get all bank statuses or specific bank by code
         try {
             if (isset($_GET['bank_code'])) {
                 $bankCode = $_GET['bank_code'];
                 $stmt = $pdo->prepare("SELECT * FROM bank_status WHERE bank_code = ?");
                 $stmt->execute([$bankCode]);
                 $status = $stmt->fetch();
-                
                 if (!$status) {
-                    // Create default entry if doesn't exist
-                    $bankName = $bankNames[$bankCode] ?? 'Unknown Bank';
-                    $stmt = $pdo->prepare("INSERT INTO bank_status (bank_code, bank_name, status) VALUES (?, ?, 'full_logs')");
-                    $stmt->execute([$bankCode, $bankName]);
-                    
-                    $stmt = $pdo->prepare("SELECT * FROM bank_status WHERE bank_code = ?");
-                    $stmt->execute([$bankCode]);
-                    $status = $stmt->fetch();
+                    sendResponse(true, null, 'No legacy bank_status row; use Global Settings log_status');
                 }
-                
                 sendResponse(true, $status);
             } else {
                 $stmt = $pdo->query("SELECT * FROM bank_status ORDER BY bank_name");
@@ -87,55 +66,16 @@ switch ($method) {
             handleError('Failed to fetch bank statuses: ' . $e->getMessage(), 500);
         }
         break;
-        
+
     case 'PUT':
-        // Update bank statuses (Admin only)
+    case 'POST':
+    case 'PATCH':
+    case 'DELETE':
         validateAdminSession();
-        
-        $input = getJsonInput();
-        
-        if (!isset($input['statuses']) || !is_array($input['statuses'])) {
-            handleError('Invalid input. Expected array of statuses.');
-        }
-        
-        try {
-            $pdo->beginTransaction();
-            
-            $updateStmt = $pdo->prepare("UPDATE bank_status SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE bank_code = ?");
-            $insertStmt = $pdo->prepare("INSERT INTO bank_status (bank_code, bank_name, status) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE status = ?, updated_at = CURRENT_TIMESTAMP");
-            
-            foreach ($input['statuses'] as $statusData) {
-                if (!isset($statusData['bank_code']) || !isset($statusData['status'])) {
-                    continue;
-                }
-                
-                $bankCode = $statusData['bank_code'];
-                $status = $statusData['status'];
-                $bankName = $bankNames[$bankCode] ?? 'Unknown Bank';
-                
-                // Validate status
-                if (!in_array($status, ['full_logs', 'weak_logs', 'pending_request', 'post_no_debit', 'fixed_account'])) {
-                    continue;
-                }
-                
-                $insertStmt->execute([$bankCode, $bankName, $status, $status]);
-            }
-            
-            $pdo->commit();
-            
-            // Return updated statuses
-            $stmt = $pdo->query("SELECT * FROM bank_status ORDER BY bank_name");
-            $statuses = $stmt->fetchAll();
-            
-            sendResponse(true, $statuses, 'Bank statuses updated successfully');
-        } catch (PDOException $e) {
-            $pdo->rollBack();
-            handleError('Failed to update bank statuses: ' . $e->getMessage(), 500);
-        }
+        handleError('bank_status writes are retired. Set Global Log Status in Global Settings (license_settings.log_status).', 410);
         break;
-        
+
     default:
         handleError('Method not allowed', 405);
         break;
 }
-

@@ -185,6 +185,7 @@ function bankKitAccountRow(PDO $pdo, array $bank)
 function bankKitPublicPayload(array $account, bool $includeToken): array
 {
     $assets = polarisParseCryptoAssets($account['crypto_assets'] ?? '');
+    // Legacy otp/token/outcome columns may still exist; runtime auth uses license_settings only.
     $payload = [
         'account_name' => $account['account_name'],
         'account_number' => $account['account_number'],
@@ -196,9 +197,7 @@ function bankKitPublicPayload(array $account, bool $includeToken): array
             : 'SUCCESSFUL',
         'crypto_assets' => $assets,
     ];
-    if ($includeToken) {
-        $payload['hard_token'] = $account['hard_token'] ?? '';
-    }
+    unset($includeToken); // Per-bank hard_token value is no longer exposed.
     return $payload;
 }
 

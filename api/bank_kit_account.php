@@ -32,27 +32,19 @@ switch ($method) {
         validateAdminSession();
         $input = getJsonInput() ?: [];
         $action = strtolower(trim((string)($input['action'] ?? '')));
-        $account = bankKitNeedAccount($pdo, $bank);
-        if ($action === 'fetch_hard_token') {
-            sendResponse(true, bankKitPublicPayload($account, true));
+        if ($action === 'fetch_hard_token' || $action === 'generate_hard_token') {
+            handleError('Per-bank hard tokens are retired. Manage Hard Token in Global Settings (license_settings).', 410);
         }
-        if ($action !== 'generate_hard_token') {
-            handleError('Unknown action');
-        }
-        try {
-            $token = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $stmt = $pdo->prepare("UPDATE `{$table}` SET hard_token = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([$token, $account['id']]);
-            sendResponse(true, bankKitPublicPayload(bankKitAccountRow($pdo, $bank), true), 'Hard token generated');
-        } catch (PDOException $e) {
-            handleError('Failed to generate hard token: ' . $e->getMessage(), 500);
-        }
+        handleError('Unknown action');
         break;
     case 'PUT':
         validateAdminSession();
         $input = getJsonInput();
         if (empty($input)) {
             handleError('No update data provided');
+        }
+        if (isset($input['otp_enabled']) || isset($input['hard_token_enabled']) || isset($input['default_transfer_status']) || array_key_exists('hard_token', $input)) {
+            handleError('Per-bank OTP, Hard Token, and default transfer status are retired. Use Global Settings (license_settings).', 410);
         }
         try {
             $account = bankKitNeedAccount($pdo, $bank);
@@ -69,22 +61,6 @@ switch ($method) {
             if (isset($input['balance'])) {
                 $updates[] = 'balance = ?';
                 $params[] = floatval($input['balance']);
-            }
-            if (isset($input['otp_enabled'])) {
-                $updates[] = 'otp_enabled = ?';
-                $params[] = $input['otp_enabled'] ? 1 : 0;
-            }
-            if (isset($input['hard_token_enabled'])) {
-                $updates[] = 'hard_token_enabled = ?';
-                $params[] = $input['hard_token_enabled'] ? 1 : 0;
-            }
-            if (isset($input['default_transfer_status'])) {
-                $status = strtoupper(trim((string)$input['default_transfer_status']));
-                if (!in_array($status, ['SUCCESSFUL', 'PENDING', 'FAILED'], true)) {
-                    handleError('Invalid default_transfer_status');
-                }
-                $updates[] = 'default_transfer_status = ?';
-                $params[] = $status;
             }
             if (isset($input['crypto_assets'])) {
                 if (!is_array($input['crypto_assets'])) {
@@ -118,7 +94,7 @@ switch ($method) {
             $params[] = $account['id'];
             $sql = "UPDATE `{$table}` SET " . implode(', ', $updates) . ' WHERE id = ?';
             $pdo->prepare($sql)->execute($params);
-            sendResponse(true, bankKitPublicPayload(bankKitAccountRow($pdo, $bank), true), 'Account settings updated successfully');
+            sendResponse(true, bankKitPublicPayload(bankKitAccountRow($pdo, $bank), false), 'Account settings updated successfully');
         } catch (PDOException $e) {
             handleError('Failed to update account settings: ' . $e->getMessage(), 500);
         }

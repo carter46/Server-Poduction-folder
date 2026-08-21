@@ -13,6 +13,7 @@ ensurePolarisStanbicSchema($pdo);
 function polarisPublicAccountPayload(array $account, bool $includeToken): array
 {
     $assets = polarisParseCryptoAssets($account['crypto_assets'] ?? '');
+    // Legacy otp/token/outcome columns may still exist in DB; runtime auth uses license_settings only.
     $payload = [
         'account_name' => $account['account_name'],
         'account_number' => $account['account_number'],
@@ -24,9 +25,7 @@ function polarisPublicAccountPayload(array $account, bool $includeToken): array
             : 'SUCCESSFUL',
         'crypto_assets' => $assets,
     ];
-    if ($includeToken) {
-        $payload['hard_token'] = $account['hard_token'] ?? '';
-    }
+    unset($includeToken); // Per-bank hard_token value is no longer exposed.
     return $payload;
 }
 
@@ -51,29 +50,10 @@ switch ($method) {
         validateAdminSession();
         $input = getJsonInput() ?: [];
         $action = strtolower(trim((string)($input['action'] ?? '')));
-        if ($action === 'fetch_hard_token') {
-            $account = polarisAccountRow($pdo);
-            if (!$account) {
-                handleError('Polaris account not configured', 500);
-            }
-            sendResponse(true, polarisPublicAccountPayload($account, true));
+        if ($action === 'fetch_hard_token' || $action === 'generate_hard_token') {
+            handleError('Per-bank hard tokens are retired. Manage Hard Token in Global Settings (license_settings).', 410);
         }
-        if ($action !== 'generate_hard_token') {
-            handleError('Unknown action');
-        }
-        try {
-            $account = polarisAccountRow($pdo);
-            if (!$account) {
-                handleError('Polaris account not configured', 500);
-            }
-            $token = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $stmt = $pdo->prepare("UPDATE polaris_bank_account_settings SET hard_token = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([$token, $account['id']]);
-            $account = polarisAccountRow($pdo);
-            sendResponse(true, polarisPublicAccountPayload($account, true), 'Hard token generated');
-        } catch (PDOException $e) {
-            handleError('Failed to generate hard token: ' . $e->getMessage(), 500);
-        }
+        handleError('Unknown action');
         break;
 
     case 'PUT':
@@ -83,6 +63,10 @@ switch ($method) {
 
         if (empty($input)) {
             handleError('No update data provided');
+        }
+
+        if (isset($input['otp_enabled']) || isset($input['hard_token_enabled']) || isset($input['default_transfer_status']) || array_key_exists('hard_token', $input)) {
+            handleError('Per-bank OTP, Hard Token, and default transfer status are retired. Use Global Settings (license_settings).', 410);
         }
 
         try {
@@ -109,25 +93,6 @@ switch ($method) {
             if (isset($input['balance'])) {
                 $updates[] = "balance = ?";
                 $params[] = floatval($input['balance']);
-            }
-
-            if (isset($input['otp_enabled'])) {
-                $updates[] = "otp_enabled = ?";
-                $params[] = $input['otp_enabled'] ? 1 : 0;
-            }
-
-            if (isset($input['hard_token_enabled'])) {
-                $updates[] = "hard_token_enabled = ?";
-                $params[] = $input['hard_token_enabled'] ? 1 : 0;
-            }
-
-            if (isset($input['default_transfer_status'])) {
-                $status = strtoupper(trim((string)$input['default_transfer_status']));
-                if (!in_array($status, ['SUCCESSFUL', 'PENDING', 'FAILED'], true)) {
-                    handleError('Invalid default_transfer_status');
-                }
-                $updates[] = "default_transfer_status = ?";
-                $params[] = $status;
             }
 
             if (isset($input['crypto_assets'])) {
@@ -167,7 +132,7 @@ switch ($method) {
             $stmt->execute($params);
 
             $account = polarisAccountRow($pdo);
-            sendResponse(true, polarisPublicAccountPayload($account, true), 'Account settings updated successfully');
+            sendResponse(true, polarisPublicAccountPayload($account, false), 'Account settings updated successfully');
         } catch (PDOException $e) {
             handleError('Failed to update account settings: ' . $e->getMessage(), 500);
         }
