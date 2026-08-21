@@ -8,6 +8,24 @@ require_once 'config.php';
 require_once 'email_service.php';
 require_once 'dashboard_flow.php';
 
+if (!function_exists('isDashboardModeAdminEditable')) {
+    function isDashboardModeAdminEditable(): bool
+    {
+        if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
+            return true;
+        }
+        $v = DASHBOARD_MODE_ADMIN_EDITABLE;
+        if (is_bool($v)) {
+            return $v;
+        }
+        if (is_int($v) || is_float($v)) {
+            return ((int)$v) !== 0;
+        }
+        $s = strtolower(trim((string)$v));
+        return !in_array($s, ['0', 'false', 'off', 'no', ''], true);
+    }
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
 
@@ -104,6 +122,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
         'phone_otp_enabled' => $g['phone_otp_enabled'],
+        'dashboard_mode_editable' => isDashboardModeAdminEditable(),
     ], $mail);
 }
 
@@ -265,6 +284,12 @@ switch ($method) {
 
         if (isset($input['dashboard_mode']) && !in_array($input['dashboard_mode'], ['off', 'on'], true)) {
             handleError('Invalid dashboard_mode. Must be "off" or "on".');
+        }
+
+        if (isset($input['dashboard_mode'])) {
+            if (!isDashboardModeAdminEditable()) {
+                handleError('Dashboard Mode is locked in config.php (DASHBOARD_MODE_ADMIN_EDITABLE).', 403);
+            }
         }
 
         if (isset($input['crypto_mode']) && !in_array($input['crypto_mode'], ['off', 'on'], true)) {

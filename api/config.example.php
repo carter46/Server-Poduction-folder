@@ -29,6 +29,33 @@ define('MOBILE_APK_META_FILENAME', 'apk-meta.json');
 define('SESSION_LIFETIME', 3600 * 24);
 define('SESSION_NAME', 'UBA_ADMIN_SESSION');
 
+/**
+ * When false, the Dashboard Mode card is hidden in admin Global Settings and
+ * dashboard_mode cannot be changed via the API. The current DB mode stays in effect.
+ * Set in config.php (not committed). Default true when omitted.
+ *
+ * define('DASHBOARD_MODE_ADMIN_EDITABLE', false);
+ */
+if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
+    define('DASHBOARD_MODE_ADMIN_EDITABLE', true);
+}
+
+function isDashboardModeAdminEditable(): bool
+{
+    if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
+        return true;
+    }
+    $v = DASHBOARD_MODE_ADMIN_EDITABLE;
+    if (is_bool($v)) {
+        return $v;
+    }
+    if (is_int($v) || is_float($v)) {
+        return ((int)$v) !== 0;
+    }
+    $s = strtolower(trim((string)$v));
+    return !in_array($s, ['0', 'false', 'off', 'no', ''], true);
+}
+
 function corsAllowedOrigins(): array
 {
     $list = [];
