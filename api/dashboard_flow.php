@@ -318,11 +318,11 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
         if ($mode === 'off' && $verified) {
             $accountNumber = dashboardVerifiedAccountNumber($bankCode);
         }
-        sendResponse(true, [
+        sendResponse(true, array_merge([
             'dashboard_mode' => $mode,
             'bank_verified' => $verified,
             'account_number' => $accountNumber,
-        ]);
+        ], globalTransferPublicFlags($pdo)));
     }
 
     if ($method === 'POST') {
