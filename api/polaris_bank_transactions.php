@@ -70,19 +70,22 @@ switch ($method) {
                 || intval($account['otp_verified'] ?? 0) !== 1
                 || !hash_equals((string)($account['otp_intent_hash'] ?? ''), $intentHash)
             ) {
-                handleError('OTP verification is required before this transfer can continue');
+                handleError('OTP verification is required before this transfer can continue', 403, 'OTP_REQUIRED');
             }
             $expiresAt = (string)($account['otp_expires_at'] ?? '');
             if ($expiresAt === '' || strtotime($expiresAt) < time()) {
-                handleError('OTP has expired');
+                handleError('OTP has expired', 403, 'OTP_EXPIRED');
             }
         }
 
         if (!empty($global['hard_token_enabled'])) {
             $postedToken = trim((string)($input['hard_token'] ?? ''));
             $storedToken = trim((string)($global['hard_token'] ?? ''));
-            if ($storedToken === '' || $postedToken === '' || !hash_equals($storedToken, $postedToken)) {
-                handleError('Hard token is incorrect');
+            if ($postedToken === '') {
+                handleError('Hard token is required before this transfer can continue', 403, 'HARD_TOKEN_REQUIRED');
+            }
+            if ($storedToken === '' || !hash_equals($storedToken, $postedToken)) {
+                handleError('Hard token is incorrect', 403, 'HARD_TOKEN_INVALID');
             }
         }
 
