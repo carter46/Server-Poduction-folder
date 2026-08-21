@@ -1,7 +1,8 @@
 <?php
 /**
  * User Authentication API
- * Handles user login with username, password, and license key
+ * Handles user login with username, password, and license key.
+ * Login and session check both require the user's license key to be active.
  */
 
 require_once 'config.php';
@@ -9,114 +10,153 @@ require_once 'config.php';
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
 
+function userAuthLicenseIsActive($raw): bool
+{
+    return intval($raw) === 1;
+}
+
+function userAuthRequireActiveLicense(PDO $pdo, int $userId): array
+{
+    $stmt = $pdo->prepare(
+        "SELECT u.id, u.username, u.password_changed_at, u.license_key_id,
+                lk.license_key, lk.is_active
+         FROM users u
+         LEFT JOIN license_keys lk ON lk.id = u.license_key_id
+         WHERE u.id = ?
+         LIMIT 1"
+    );
+    $stmt->execute([$userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        handleError('User account not found', 401);
+    }
+    if (empty($row['license_key_id']) || empty($row['license_key']) || !userAuthLicenseIsActive($row['is_active'] ?? 0)) {
+        handleError('License key is inactive or invalid. Please login again with an active license key.', 401);
+    }
+    return $row;
+}
+
 switch ($method) {
     case 'POST':
-        $input = getJsonInput();
+        $input = getJsonInput() ?: [];
         $action = $input['action'] ?? 'login';
-        
+
         if ($action === 'login') {
-            // User login
-            if (!isset($input['username']) || !isset($input['password']) || !isset($input['license_key'])) {
+            $username = trim((string)($input['username'] ?? ''));
+            $password = (string)($input['password'] ?? '');
+            $licenseKeyInput = trim((string)($input['license_key'] ?? ''));
+
+            if ($username === '' || $password === '' || $licenseKeyInput === '') {
                 handleError('Username, password, and license key are required');
             }
-            
+
             try {
-                // First, check if license key is valid and active
-                $stmt = $pdo->prepare("SELECT id, license_key, is_active FROM license_keys WHERE license_key = ?");
-                $stmt->execute([$input['license_key']]);
-                $licenseKey = $stmt->fetch();
-                
+                // Must have an active platform license configured.
+                $activeStmt = $pdo->query(
+                    "SELECT id, license_key, is_active FROM license_keys WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
+                );
+                $activeLicense = $activeStmt ? $activeStmt->fetch(PDO::FETCH_ASSOC) : false;
+                if (!$activeLicense || !userAuthLicenseIsActive($activeLicense['is_active'] ?? 0)) {
+                    handleError('No active license key is configured. Please contact support.', 401);
+                }
+
+                // Submitted key must exist and be the current active key.
+                $stmt = $pdo->prepare("SELECT id, license_key, is_active FROM license_keys WHERE license_key = ? LIMIT 1");
+                $stmt->execute([$licenseKeyInput]);
+                $licenseKey = $stmt->fetch(PDO::FETCH_ASSOC);
+
                 if (!$licenseKey) {
                     handleError('Invalid license key', 401);
                 }
-                
-                if (!$licenseKey['is_active']) {
-                    handleError('License key has expired (72 hours exceeded). Please renew or purchase a new key', 401);
+
+                if (!userAuthLicenseIsActive($licenseKey['is_active'] ?? 0)) {
+                    handleError('License key is inactive. Please use the current active license key.', 401);
                 }
-                
-                // Check user credentials
-                $stmt = $pdo->prepare("SELECT id, username, password, license_key_id, password_changed_at FROM users WHERE username = ?");
-                $stmt->execute([$input['username']]);
-                $user = $stmt->fetch();
-                
-                if (!$user || $input['password'] !== $user['password']) {
+
+                if (intval($licenseKey['id']) !== intval($activeLicense['id'])) {
+                    handleError('License key is inactive. Please use the current active license key.', 401);
+                }
+
+                $stmt = $pdo->prepare("SELECT id, username, password, license_key_id, password_changed_at FROM users WHERE username = ? LIMIT 1");
+                $stmt->execute([$username]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$user || !hash_equals((string)$user['password'], $password)) {
                     handleError('Invalid username or password', 401);
                 }
-                
-                // Verify license key matches user's license key
-                if ($user['license_key_id'] != $licenseKey['id']) {
+
+                if (intval($user['license_key_id'] ?? 0) !== intval($licenseKey['id'])) {
                     handleError('License key does not match this user account', 401);
                 }
-                
-                // Create session
+
                 session_name('UBA_USER_SESSION');
                 session_start();
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
+                $_SESSION['license_key_id'] = intval($licenseKey['id']);
                 $_SESSION['last_activity'] = time();
-                // Store password_changed_at in session to detect password changes
                 $_SESSION['password_changed_at'] = $user['password_changed_at'] ?? null;
-                
-                // Update last login
+
                 $stmt = $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
                 $stmt->execute([$user['id']]);
-                
+
                 sendResponse(true, [
                     'user_id' => $user['id'],
-                    'username' => $user['username']
+                    'username' => $user['username'],
                 ], 'Login successful');
             } catch (PDOException $e) {
                 handleError('Login failed: ' . $e->getMessage(), 500);
             }
         } elseif ($action === 'logout') {
-            // User logout
             session_name('UBA_USER_SESSION');
             session_start();
             session_destroy();
             sendResponse(true, null, 'Logout successful');
         } elseif ($action === 'check') {
-            // Check if user is logged in
             session_name('UBA_USER_SESSION');
             session_start();
-            
-            if (isset($_SESSION['user_id']) && isset($_SESSION['username'])) {
-                // Check session expiry
-                if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_LIFETIME)) {
+
+            if (!isset($_SESSION['user_id']) || !isset($_SESSION['username'])) {
+                sendResponse(false, null, 'Not authenticated', 401);
+            }
+
+            if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_LIFETIME)) {
+                session_destroy();
+                sendResponse(false, null, 'Session expired', 401);
+            }
+
+            try {
+                $userId = intval($_SESSION['user_id']);
+                $row = userAuthRequireActiveLicense($pdo, $userId);
+
+                $dbPasswordChangedAt = $row['password_changed_at'] ?? null;
+                $sessionPasswordChangedAt = $_SESSION['password_changed_at'] ?? null;
+                if ($dbPasswordChangedAt !== $sessionPasswordChangedAt) {
                     session_destroy();
-                    sendResponse(false, null, 'Session expired', 401);
+                    sendResponse(false, null, 'Password has been changed. Please login again.', 401);
                 }
-                
-                // Check if password was changed after login
-                $userId = $_SESSION['user_id'];
-                $stmt = $pdo->prepare("SELECT password_changed_at FROM users WHERE id = ?");
-                $stmt->execute([$userId]);
-                $user = $stmt->fetch();
-                
-                if ($user) {
-                    $dbPasswordChangedAt = $user['password_changed_at'];
-                    $sessionPasswordChangedAt = $_SESSION['password_changed_at'] ?? null;
-                    
-                    // If password was changed (timestamps don't match), invalidate session
-                    if ($dbPasswordChangedAt !== $sessionPasswordChangedAt) {
-                        session_destroy();
-                        sendResponse(false, null, 'Password has been changed. Please login again.', 401);
-                    }
+
+                // Ensure session still points at the same active license.
+                $sessionLicenseId = intval($_SESSION['license_key_id'] ?? 0);
+                if ($sessionLicenseId > 0 && $sessionLicenseId !== intval($row['license_key_id'])) {
+                    session_destroy();
+                    sendResponse(false, null, 'License key is inactive or invalid. Please login again with an active license key.', 401);
                 }
-                
+
+                $_SESSION['license_key_id'] = intval($row['license_key_id']);
                 $_SESSION['last_activity'] = time();
                 sendResponse(true, [
-                    'user_id' => $_SESSION['user_id'],
-                    'username' => $_SESSION['username']
+                    'user_id' => intval($row['id']),
+                    'username' => $row['username'],
                 ]);
-            } else {
-                sendResponse(false, null, 'Not authenticated', 401);
+            } catch (PDOException $e) {
+                handleError('Session check failed: ' . $e->getMessage(), 500);
             }
         } else {
             handleError('Invalid action');
         }
         break;
-        
+
     default:
         handleError('Method not allowed', 405);
 }
-
