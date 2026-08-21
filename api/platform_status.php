@@ -11,40 +11,47 @@ require_once 'config.php';
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
 
-// Create table if it doesn't exist and ensure row id=1 exists
-try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS platform_status (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        status ENUM('on','off') NOT NULL DEFAULT 'on',
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )");
-
-    $stmt = $pdo->query("SELECT COUNT(*) as count FROM platform_status");
-    $result = $stmt->fetch();
-    if ($result && (int)$result['count'] === 0) {
-        $insertStmt = $pdo->prepare("INSERT INTO platform_status (id, status) VALUES (1, 'on')");
-        $insertStmt->execute();
-    } else {
-        // Ensure id=1 exists even if table has rows
-        $pdo->exec("INSERT INTO platform_status (id, status) VALUES (1, 'on')
-            ON DUPLICATE KEY UPDATE id = id");
+function platformStatusEnsureSchema(PDO $pdo): void
+{
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS platform_status (
+            id INT PRIMARY KEY,
+            status ENUM('on','off') NOT NULL DEFAULT 'on',
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )");
+    } catch (PDOException $e) {
+        // continue
     }
-} catch (PDOException $e) {
-    // Table might already exist, continue
+
+    try {
+        $stmt = $pdo->query("SELECT id FROM platform_status WHERE id = 1 LIMIT 1");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("INSERT INTO platform_status (id, status) VALUES (1, 'on')");
+        }
+    } catch (PDOException $e) {
+        // continue
+    }
 }
+
+function platformStatusNormalize($raw): string
+{
+    $v = strtolower(trim((string)$raw));
+    return $v === 'off' ? 'off' : 'on';
+}
+
+platformStatusEnsureSchema($pdo);
 
 switch ($method) {
     case 'GET':
         try {
             $stmt = $pdo->query("SELECT status, updated_at FROM platform_status WHERE id = 1 LIMIT 1");
-            $row = $stmt->fetch();
+            $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
             if (!$row) {
-                // Fallback
-                sendResponse(true, ['status' => 'on']);
+                sendResponse(true, ['status' => 'on', 'updated_at' => null]);
             }
             sendResponse(true, [
-                'status' => $row['status'],
-                'updated_at' => $row['updated_at'],
+                'status' => platformStatusNormalize($row['status'] ?? 'on'),
+                'updated_at' => $row['updated_at'] ?? null,
             ]);
         } catch (PDOException $e) {
             handleError('Failed to fetch platform status: ' . $e->getMessage(), 500);
@@ -55,14 +62,17 @@ switch ($method) {
         validateAdminSession();
 
         $input = getJsonInput();
-        $status = isset($input['status']) ? $input['status'] : null;
-
-        if (!in_array($status, ['on', 'off'], true)) {
+        $status = platformStatusNormalize($input['status'] ?? '');
+        if (!isset($input['status']) || !in_array((string)$input['status'], ['on', 'off'], true)) {
             handleError('Invalid status. Expected "on" or "off".', 400);
         }
+        $status = platformStatusNormalize($input['status']);
 
         try {
-            $stmt = $pdo->prepare("UPDATE platform_status SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1");
+            $stmt = $pdo->prepare(
+                "INSERT INTO platform_status (id, status) VALUES (1, ?)
+                 ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = CURRENT_TIMESTAMP"
+            );
             $stmt->execute([$status]);
 
             sendResponse(true, [
@@ -77,4 +87,3 @@ switch ($method) {
         handleError('Method not allowed', 405);
         break;
 }
-
