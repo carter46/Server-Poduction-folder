@@ -4,14 +4,76 @@
  * Admin only - handles license key generation and settings
  */
 
+function licenseKeysBootstrapError(string $message, int $code = 500): void
+{
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code($code);
+    }
+    echo json_encode(['success' => false, 'message' => $message], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+foreach (['config.php', 'email_service.php', 'dashboard_flow.php'] as $bootstrapFile) {
+    $path = __DIR__ . DIRECTORY_SEPARATOR . $bootstrapFile;
+    if (!is_file($path)) {
+        licenseKeysBootstrapError('Missing server file: api/' . $bootstrapFile . ' — upload it from the project.', 500);
+    }
+}
+
 require_once 'config.php';
 require_once 'email_service.php';
 require_once 'dashboard_flow.php';
+
+if (!function_exists('isDashboardModeAdminEditable')) {
+    function isDashboardModeAdminEditable()
+    {
+        if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
+            return true;
+        }
+        $v = DASHBOARD_MODE_ADMIN_EDITABLE;
+        if (is_bool($v)) {
+            return $v;
+        }
+        if (is_int($v) || is_float($v)) {
+            return ((int)$v) !== 0;
+        }
+        $s = strtolower(trim((string)$v));
+        return !in_array($s, ['0', 'false', 'off', 'no', ''], true);
+    }
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
 
 function ensureLicenseSettingsSchemaAdmin(PDO $pdo) {
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS license_settings (
+            id INT PRIMARY KEY,
+            purchase_email VARCHAR(255) DEFAULT 'support@ubadashboard.com',
+            renewal_gate ENUM('off','on') NOT NULL DEFAULT 'off',
+            software_activated ENUM('no','yes') NOT NULL DEFAULT 'no',
+            normal_delay_seconds INT NOT NULL DEFAULT 15,
+            renewal_delay_seconds INT NOT NULL DEFAULT 25,
+            expected_signature VARCHAR(255) NOT NULL DEFAULT 'UBA-RENEWAL-SIG-A8829F0D11D992A',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )");
+    } catch (PDOException $e) {
+        // continue — migration may have created it
+    }
+
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS license_keys (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            license_key VARCHAR(255) NOT NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY license_key (license_key)
+        )");
+    } catch (PDOException $e) {
+        // continue
+    }
+
     $columns = [
         'renewal_gate' => "ALTER TABLE license_settings ADD COLUMN renewal_gate ENUM('off','on') NOT NULL DEFAULT 'off' AFTER purchase_email",
         'software_activated' => "ALTER TABLE license_settings ADD COLUMN software_activated ENUM('no','yes') NOT NULL DEFAULT 'no' AFTER renewal_gate",
@@ -110,8 +172,8 @@ function fetchLicenseSettingsRow(PDO $pdo) {
 
 ensureLicenseSettingsSchemaAdmin($pdo);
 
-// Validate admin session
-$adminId = validateAdminSession();
+// Validate admin session (returns 401 JSON if not logged in)
+validateAdminSession();
 
 switch ($method) {
     case 'GET':
@@ -126,7 +188,7 @@ switch ($method) {
                 'active_license_key' => $activeLicenseKey ?: null,
                 'settings' => $settings,
             ]);
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             handleError('Failed to fetch license key: ' . $e->getMessage(), 500);
         }
         break;
