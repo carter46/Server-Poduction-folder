@@ -8,24 +8,6 @@ require_once 'config.php';
 require_once 'email_service.php';
 require_once 'dashboard_flow.php';
 
-if (!function_exists('isDashboardModeAdminEditable')) {
-    function isDashboardModeAdminEditable(): bool
-    {
-        if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
-            return true;
-        }
-        $v = DASHBOARD_MODE_ADMIN_EDITABLE;
-        if (is_bool($v)) {
-            return $v;
-        }
-        if (is_int($v) || is_float($v)) {
-            return ((int)$v) !== 0;
-        }
-        $s = strtolower(trim((string)$v));
-        return !in_array($s, ['0', 'false', 'off', 'no', ''], true);
-    }
-}
-
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = getDBConnection();
 

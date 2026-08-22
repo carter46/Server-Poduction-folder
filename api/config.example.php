@@ -40,20 +40,22 @@ if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
     define('DASHBOARD_MODE_ADMIN_EDITABLE', true);
 }
 
-function isDashboardModeAdminEditable(): bool
-{
-    if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
-        return true;
+if (!function_exists('isDashboardModeAdminEditable')) {
+    function isDashboardModeAdminEditable()
+    {
+        if (!defined('DASHBOARD_MODE_ADMIN_EDITABLE')) {
+            return true;
+        }
+        $v = DASHBOARD_MODE_ADMIN_EDITABLE;
+        if (is_bool($v)) {
+            return $v;
+        }
+        if (is_int($v) || is_float($v)) {
+            return ((int)$v) !== 0;
+        }
+        $s = strtolower(trim((string)$v));
+        return !in_array($s, ['0', 'false', 'off', 'no', ''], true);
     }
-    $v = DASHBOARD_MODE_ADMIN_EDITABLE;
-    if (is_bool($v)) {
-        return $v;
-    }
-    if (is_int($v) || is_float($v)) {
-        return ((int)$v) !== 0;
-    }
-    $s = strtolower(trim((string)$v));
-    return !in_array($s, ['0', 'false', 'off', 'no', ''], true);
 }
 
 function corsAllowedOrigins(): array
