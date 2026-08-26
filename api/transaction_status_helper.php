@@ -22,13 +22,14 @@ function transactionStatusHoldsFunds($status) {
     return $s === 'SUCCESSFUL' || $s === 'PENDING';
 }
 
-/**
- * Adjust account balance when status changes between held <-> returned.
- * $accountTable must be a trusted constant from our code (not user input).
- * @return float Delta applied to balance (+ refund, - deduct, 0 none)
- */
-function applyTransactionStatusBalanceDelta(PDO $pdo, $accountTable, $amount, $oldStatus, $newStatus) {
-    $allowedTables = [
+function transactionStatusAllowedAccountTables(): array
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+
+    $cache = [
         'uba_account_settings',
         'first_bank_account_settings',
         'zenith_bank_account_settings',
@@ -37,8 +38,43 @@ function applyTransactionStatusBalanceDelta(PDO $pdo, $accountTable, $amount, $o
         'polaris_bank_account_settings',
         'stanbic_bank_account_settings',
         'fidelity_bank_account_settings',
+        // Restored Bank Kit banks (Sterling, GTBank, etc.)
+        'gtbank_account_settings',
+        'heritage_bank_account_settings',
+        'jaiz_bank_account_settings',
+        'keystone_bank_account_settings',
+        'sterling_bank_account_settings',
+        'union_bank_account_settings',
+        'unity_bank_account_settings',
+        'kuda_bank_account_settings',
+        'opay_account_settings',
+        'moniepoint_account_settings',
+        'palmpay_account_settings',
     ];
-    if (!in_array($accountTable, $allowedTables, true)) {
+
+    $kitPath = __DIR__ . '/bank_kit.php';
+    if (is_file($kitPath) && !function_exists('bankKitRegistry')) {
+        require_once $kitPath;
+    }
+    if (function_exists('bankKitRegistry')) {
+        foreach (bankKitRegistry() as $bank) {
+            if (!empty($bank['account_table'])) {
+                $cache[] = $bank['account_table'];
+            }
+        }
+    }
+
+    $cache = array_values(array_unique($cache));
+    return $cache;
+}
+
+/**
+ * Adjust account balance when status changes between held <-> returned.
+ * $accountTable must be a trusted constant from our code (not user input).
+ * @return float Delta applied to balance (+ refund, - deduct, 0 none)
+ */
+function applyTransactionStatusBalanceDelta(PDO $pdo, $accountTable, $amount, $oldStatus, $newStatus) {
+    if (!in_array($accountTable, transactionStatusAllowedAccountTables(), true)) {
         throw new Exception('Invalid account table');
     }
 
