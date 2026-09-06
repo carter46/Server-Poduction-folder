@@ -174,5 +174,15 @@ function validateAdminSession() {
     }
 
     $_SESSION['last_activity'] = time();
+
+    // Apply pending DB auto-migrations once per admin request (idempotent; never blocks access).
+    try {
+        require_once __DIR__ . '/database_auto_migrate.php';
+        runAdminDatabaseAutoMigrations(getDBConnection(), (int)$_SESSION['admin_id']);
+    } catch (Throwable $e) {
+        error_log('validateAdminSession auto-migrate error: ' . $e->getMessage());
+        $_SESSION['auto_migration_errors'] = ['Migrator error: ' . $e->getMessage()];
+    }
+
     return $_SESSION['admin_id'];
 }

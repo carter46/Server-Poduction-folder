@@ -21,6 +21,15 @@ switch ($method) {
             }
             
             try {
+                require_once __DIR__ . '/database_auto_migrate.php';
+                // Bootstrap column needed for username-OR-email lookup (before auth).
+                DatabaseAutoMigrate::ensureColumn(
+                    $pdo,
+                    'admin_users',
+                    'email',
+                    '`email` VARCHAR(255) DEFAULT NULL'
+                );
+
                 $loginId = trim((string)$input['username']);
                 // Accept username OR email (existing accounts keep working).
                 $stmt = $pdo->prepare(
@@ -37,10 +46,15 @@ switch ($method) {
                 
                 // Create session
                 session_name(SESSION_NAME);
-                session_start();
+                if (session_status() !== PHP_SESSION_ACTIVE) {
+                    session_start();
+                }
                 $_SESSION['admin_id'] = $admin['id'];
                 $_SESSION['admin_username'] = $admin['username'];
                 $_SESSION['last_activity'] = time();
+
+                // Apply pending versioned migrations after successful admin auth.
+                $migration = runAdminDatabaseAutoMigrations($pdo, (int)$admin['id']);
                 
                 // Update last login
                 $stmt = $pdo->prepare("UPDATE admin_users SET last_login = NOW() WHERE id = ?");
@@ -48,7 +62,13 @@ switch ($method) {
                 
                 sendResponse(true, [
                     'admin_id' => $admin['id'],
-                    'username' => $admin['username']
+                    'username' => $admin['username'],
+                    'auto_migration' => [
+                        'applied' => $migration['applied'] ?? [],
+                        'failed' => $migration['failed'] ?? [],
+                        'skipped' => $migration['skipped'] ?? 0,
+                        'errors' => $migration['errors'] ?? [],
+                    ],
                 ], 'Login successful');
             } catch (PDOException $e) {
                 handleError('Login failed: ' . $e->getMessage(), 500);
@@ -72,9 +92,19 @@ switch ($method) {
                 }
                 
                 $_SESSION['last_activity'] = time();
+
+                require_once __DIR__ . '/database_auto_migrate.php';
+                $migration = runAdminDatabaseAutoMigrations($pdo, (int)$_SESSION['admin_id']);
+
                 sendResponse(true, [
                     'admin_id' => $_SESSION['admin_id'],
-                    'username' => $_SESSION['admin_username']
+                    'username' => $_SESSION['admin_username'],
+                    'auto_migration' => [
+                        'applied' => $migration['applied'] ?? [],
+                        'failed' => $migration['failed'] ?? [],
+                        'skipped' => $migration['skipped'] ?? 0,
+                        'errors' => $migration['errors'] ?? [],
+                    ],
                 ]);
             } else {
                 sendResponse(false, null, 'Not authenticated', 401);
