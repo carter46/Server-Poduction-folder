@@ -23,6 +23,12 @@ function polarisIntentHash(string $transferType, string $destination, $amount): 
     return hash('sha256', $norm);
 }
 
+/** Intent hash for Mode OFF Email OTP after full BankVerify (before transfer type). */
+function polarisPreTransferIntentHash(): string
+{
+    return polarisIntentHash('pre_transfer', 'verify', 1);
+}
+
 function polarisParseCryptoAssets($raw): array
 {
     if (is_array($raw)) {

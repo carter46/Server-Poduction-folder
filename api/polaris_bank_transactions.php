@@ -70,10 +70,13 @@ switch ($method) {
                 ? trim((string)($input['wallet_address'] ?? ''))
                 : trim((string)($input['beneficiary_account'] ?? ''));
             $intentHash = polarisIntentHash($transferType, $destination, $amount);
+            $preHash = polarisPreTransferIntentHash();
+            $storedIntent = (string)($account['otp_intent_hash'] ?? '');
+            $intentOk = hash_equals($storedIntent, $intentHash) || hash_equals($storedIntent, $preHash);
             if ($challengeId === ''
                 || !hash_equals((string)($account['otp_challenge_id'] ?? ''), $challengeId)
                 || intval($account['otp_verified'] ?? 0) !== 1
-                || !hash_equals((string)($account['otp_intent_hash'] ?? ''), $intentHash)
+                || !$intentOk
             ) {
                 handleError('OTP verification is required before this transfer can continue', 403, 'OTP_REQUIRED');
             }
@@ -159,6 +162,29 @@ switch ($method) {
                 handleError('Polaris account not configured', 500);
             }
             $global = globalTransferSettingsGet($pdo);
+            if (!empty($global['otp_enabled'])) {
+                $challengeId = trim((string)($input['otp_challenge_id'] ?? ''));
+                $destination = $transferType === 'crypto'
+                    ? trim((string)($input['wallet_address'] ?? ''))
+                    : trim((string)($input['beneficiary_account'] ?? ''));
+                $intentHash = polarisIntentHash($transferType, $destination, $amount);
+                $preHash = polarisPreTransferIntentHash();
+                $storedIntent = (string)($locked['otp_intent_hash'] ?? '');
+                $intentOk = hash_equals($storedIntent, $intentHash) || hash_equals($storedIntent, $preHash);
+                if ($challengeId === ''
+                    || !hash_equals((string)($locked['otp_challenge_id'] ?? ''), $challengeId)
+                    || intval($locked['otp_verified'] ?? 0) !== 1
+                    || !$intentOk
+                ) {
+                    $pdo->rollBack();
+                    handleError('OTP verification is required before this transfer can continue', 403, 'OTP_REQUIRED');
+                }
+                $expiresAt = (string)($locked['otp_expires_at'] ?? '');
+                if ($expiresAt === '' || strtotime($expiresAt) < time()) {
+                    $pdo->rollBack();
+                    handleError('OTP has expired', 403, 'OTP_EXPIRED');
+                }
+            }
             if (!empty($global['phone_otp_enabled']) && intval($locked['phone_otp_verified'] ?? 0) !== 1) {
                 $pdo->rollBack();
                 handleError('Phone OTP verification is required before this transfer can continue', 403, 'PHONE_OTP_REQUIRED');

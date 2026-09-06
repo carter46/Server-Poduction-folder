@@ -21,8 +21,14 @@ switch ($method) {
             }
             
             try {
-                $stmt = $pdo->prepare("SELECT id, username, password FROM admin_users WHERE username = ?");
-                $stmt->execute([$input['username']]);
+                $loginId = trim((string)$input['username']);
+                // Accept username OR email (existing accounts keep working).
+                $stmt = $pdo->prepare(
+                    "SELECT id, username, password FROM admin_users
+                     WHERE username = ? OR LOWER(TRIM(COALESCE(email, ''))) = LOWER(?)
+                     LIMIT 1"
+                );
+                $stmt->execute([$loginId, $loginId]);
                 $admin = $stmt->fetch();
                 
                 if (!$admin || $input['password'] !== $admin['password']) {

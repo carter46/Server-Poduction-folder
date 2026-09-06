@@ -108,6 +108,17 @@ function bankKitRegistry(): array
             'accent' => '#E35600',
             'prefix' => 'GTBXFER',
         ],
+        '214' => [
+            'slug' => 'fcmb',
+            'name' => 'First City Monument Bank',
+            'account_table' => 'fcmb_account_settings',
+            'tx_table' => 'fcmb_transactions',
+            'fcm' => 'fcmb',
+            'logo_file' => 'fcmb.png',
+            'primary' => '#5C068C',
+            'accent' => '#6E1AA0',
+            'prefix' => 'FCMBXFER',
+        ],
         '030' => [
             'slug' => 'heritage',
             'name' => 'Heritage Bank',

@@ -57,6 +57,72 @@ if (empty($global['otp_enabled'])) {
     handleError('OTP is not enabled');
 }
 
+$preIntentHash = polarisPreTransferIntentHash();
+
+if ($action === 'send_pre_transfer') {
+    $otp = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $challengeId = bin2hex(random_bytes(16));
+    $expires = date('Y-m-d H:i:s', time() + 600);
+    $hash = password_hash($otp, PASSWORD_DEFAULT);
+    $stmt = $pdo->prepare("UPDATE `{$table}` SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, phone_otp_verified = 0, updated_at = NOW() WHERE id = ?");
+    $stmt->execute([$hash, $expires, $challengeId, $preIntentHash, $account['id']]);
+
+    $clearOtp = function () use ($pdo, $table, $account) {
+        $pdo->prepare("UPDATE `{$table}` SET otp_hash = NULL, otp_expires_at = NULL, otp_challenge_id = NULL, otp_intent_hash = NULL, otp_verified = 0, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
+    };
+
+    $emails = polarisPurchaseEmails($pdo);
+    if (empty($emails)) {
+        $clearOtp();
+        handleError('Purchase email is not configured');
+    }
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+    $html = bankKitOtpEmailHtml($bank, $otp, bankKitLogoSrc($bank));
+    $sent = polarisSendHtmlMail($pdo, $emails, $bank['name'] . ' Account Verification', $html, $challengeId);
+    $via = $sent['sent_via'] ?? null;
+    if (empty($sent['ok']) || ($via !== 'phpmailer' && $via !== 'brevo')) {
+        $clearOtp();
+        $msg = trim((string)($sent['message'] ?? ''));
+        handleError($msg !== '' ? $msg : 'Could not send OTP email. Check email configuration.');
+    }
+    sendResponse(true, [
+        'challenge_id' => $challengeId,
+        'expires_in' => 600,
+        'sent_via' => $via,
+        'phpmailer_status' => $sent['phpmailer_status'] ?? '',
+        'phpmailer_error' => $sent['phpmailer_error'] ?? '',
+        'brevo_status' => $sent['brevo_status'] ?? '',
+        'brevo_error' => $sent['brevo_error'] ?? '',
+    ], 'OTP sent');
+}
+
+if ($action === 'verify_pre_transfer') {
+    $challengeId = trim((string)($input['challenge_id'] ?? ''));
+    $otp = preg_replace('/\D/', '', (string)($input['otp'] ?? ''));
+    if ($challengeId === '' || strlen($otp) !== 6) {
+        handleError('Invalid OTP');
+    }
+    $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE id = ? LIMIT 1");
+    $stmt->execute([$account['id']]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        handleError($bank['name'] . ' account not configured', 500);
+    }
+    if ((string)($row['otp_challenge_id'] ?? '') === '' || !hash_equals((string)$row['otp_challenge_id'], $challengeId) || !hash_equals((string)($row['otp_intent_hash'] ?? ''), $preIntentHash)) {
+        handleError('OTP does not match this verification');
+    }
+    if ((string)($row['otp_expires_at'] ?? '') === '' || strtotime((string)$row['otp_expires_at']) < time()) {
+        handleError('OTP has expired');
+    }
+    if ((string)($row['otp_hash'] ?? '') === '' || !password_verify($otp, (string)$row['otp_hash'])) {
+        handleError('Incorrect OTP');
+    }
+    $pdo->prepare("UPDATE `{$table}` SET otp_verified = 1, updated_at = NOW() WHERE id = ?")->execute([$account['id']]);
+    sendResponse(true, ['challenge_id' => $challengeId, 'verified' => true], 'OTP verified');
+}
+
 $transferType = strtolower(trim((string)($input['transfer_type'] ?? '')));
 $destination = trim((string)($input['destination'] ?? ''));
 $amount = trim((string)($input['amount'] ?? ''));

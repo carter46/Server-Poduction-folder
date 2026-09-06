@@ -28,6 +28,7 @@ function globalTransferEnsureColumns(PDO $pdo): void
         'log_status' => "ALTER TABLE license_settings ADD COLUMN log_status ENUM('full_logs','weak_logs','pending_request','post_no_debit','fixed_account') NOT NULL DEFAULT 'full_logs'",
         'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
         'phone_otp_enabled' => "ALTER TABLE license_settings ADD COLUMN phone_otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
+        'phone_otp_number' => "ALTER TABLE license_settings ADD COLUMN phone_otp_number VARCHAR(32) NOT NULL DEFAULT ''",
     ];
     foreach ($columns as $name => $sql) {
         try {
@@ -52,7 +53,8 @@ function globalTransferEnsureColumns(PDO $pdo): void
  *   nin_verification:bool,
  *   log_status:string,
  *   crypto_mode:string,
- *   phone_otp_enabled:bool
+ *   phone_otp_enabled:bool,
+ *   phone_otp_number:string
  * }
  */
 function globalTransferSettingsGet(PDO $pdo): array
@@ -69,12 +71,13 @@ function globalTransferSettingsGet(PDO $pdo): array
         'log_status' => 'full_logs',
         'crypto_mode' => 'on',
         'phone_otp_enabled' => false,
+        'phone_otp_number' => '',
     ];
     try {
         $stmt = $pdo->query(
             "SELECT otp_enabled, hard_token_enabled, hard_token, default_transfer_status,
                     transfer_restriction, risky_transaction, nin_verification, log_status, crypto_mode,
-                    phone_otp_enabled
+                    phone_otp_enabled, phone_otp_number
              FROM license_settings WHERE id = 1 LIMIT 1"
         );
         $row = $stmt ? $stmt->fetch() : false;
@@ -93,6 +96,7 @@ function globalTransferSettingsGet(PDO $pdo): array
         if ($cryptoMode !== 'off') {
             $cryptoMode = 'on';
         }
+        $phoneDigits = preg_replace('/\D/', '', (string)($row['phone_otp_number'] ?? ''));
         return [
             'otp_enabled' => intval($row['otp_enabled'] ?? 0) === 1,
             'hard_token_enabled' => intval($row['hard_token_enabled'] ?? 0) === 1,
@@ -104,6 +108,7 @@ function globalTransferSettingsGet(PDO $pdo): array
             'log_status' => $log,
             'crypto_mode' => $cryptoMode,
             'phone_otp_enabled' => intval($row['phone_otp_enabled'] ?? 0) === 1,
+            'phone_otp_number' => $phoneDigits ?: '',
         ];
     } catch (PDOException $e) {
         return $defaults;
@@ -123,6 +128,7 @@ function globalTransferPublicFlags(PDO $pdo): array
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
         'phone_otp_enabled' => $g['phone_otp_enabled'],
+        'phone_otp_number' => $g['phone_otp_number'],
     ];
 }
 

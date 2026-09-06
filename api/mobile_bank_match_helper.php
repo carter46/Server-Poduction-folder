@@ -321,6 +321,7 @@ function mobileBuildReceiptDto($row) {
         'sender_name' => $row['sender_name'] ?? null,
         'sender_account' => $row['sender_account'] ?? null,
         'sender_bank' => mobileSenderBankLabel($sourceBank),
-        'direction' => 'credit',
+        // Beneficiary app: successful inbound = credit; reversed = clawback (debit).
+        'direction' => ($status === 'REVERSED' || $status === 'REVERSE') ? 'debit' : 'credit',
     ];
 }

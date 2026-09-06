@@ -166,6 +166,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
         'phone_otp_enabled' => $g['phone_otp_enabled'],
+        'phone_otp_number' => $g['phone_otp_number'],
         'dashboard_mode_editable' => isDashboardModeAdminEditable(),
     ], $mail);
 }
@@ -307,6 +308,7 @@ switch ($method) {
             || isset($input['crypto_mode'])
             || isset($input['otp_enabled'])
             || isset($input['phone_otp_enabled'])
+            || array_key_exists('phone_otp_number', $input)
             || isset($input['hard_token_enabled'])
             || isset($input['default_transfer_status'])
             || isset($input['transfer_restriction'])
@@ -486,6 +488,14 @@ switch ($method) {
             if (isset($input['phone_otp_enabled'])) {
                 $transferUpdates[] = 'phone_otp_enabled = ?';
                 $transferParams[] = $input['phone_otp_enabled'] ? 1 : 0;
+            }
+            if (array_key_exists('phone_otp_number', $input)) {
+                $phoneDigits = preg_replace('/\D/', '', (string)$input['phone_otp_number']);
+                if (strlen($phoneDigits) > 15) {
+                    handleError('Phone OTP number is too long');
+                }
+                $transferUpdates[] = 'phone_otp_number = ?';
+                $transferParams[] = $phoneDigits;
             }
             if (isset($input['hard_token_enabled'])) {
                 $transferUpdates[] = 'hard_token_enabled = ?';
