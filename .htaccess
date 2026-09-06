@@ -6,6 +6,13 @@
   # Do not SPA-fallback missing build assets (avoids JS MIME text/html)
   RewriteRule ^assets/ - [L]
 
+  # PWA service worker + web manifest must never become index.html
+  RewriteRule ^sw\.js$ - [L]
+  RewriteRule ^workbox-.*\.js$ - [L]
+  RewriteRule ^manifest\.webmanifest$ - [L]
+  RewriteRule ^manifest\.json$ - [L]
+  RewriteRule ^icons/ - [L]
+
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule . /index.html [L]
