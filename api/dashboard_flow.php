@@ -49,6 +49,26 @@ function modeOffBankCodes(): array
     return ['044', '070', '033', '076', '221', '057', '011', '058', '035', '214'];
 }
 
+function modeOffCoerceBool($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+    if (is_int($value) || is_float($value)) {
+        return ((int)$value) !== 0;
+    }
+    if (is_string($value)) {
+        $s = strtolower(trim($value));
+        if (in_array($s, ['0', 'false', 'off', 'no', ''], true)) {
+            return false;
+        }
+        if (in_array($s, ['1', 'true', 'on', 'yes'], true)) {
+            return true;
+        }
+    }
+    return !empty($value);
+}
+
 /**
  * @return array<string,bool> bank_code => dashboard enabled
  */
@@ -75,7 +95,7 @@ function modeOffBankDashboardsGet(PDO $pdo): array
         }
         foreach (modeOffBankCodes() as $code) {
             if (array_key_exists($code, $decoded)) {
-                $defaults[$code] = !empty($decoded[$code]);
+                $defaults[$code] = modeOffCoerceBool($decoded[$code]);
             }
         }
     } catch (Throwable $e) {
@@ -90,7 +110,7 @@ function modeOffBankDashboardEnabled(PDO $pdo, string $bankCode): bool
     if (!array_key_exists($bankCode, $map)) {
         return true;
     }
-    return !empty($map[$bankCode]);
+    return modeOffCoerceBool($map[$bankCode]);
 }
 
 /**
@@ -102,7 +122,7 @@ function modeOffBankDashboardsNormalize(array $inputMap): array
     $out = [];
     foreach (modeOffBankCodes() as $code) {
         if (array_key_exists($code, $inputMap)) {
-            $out[$code] = !empty($inputMap[$code]);
+            $out[$code] = modeOffCoerceBool($inputMap[$code]);
         } else {
             $out[$code] = true;
         }
