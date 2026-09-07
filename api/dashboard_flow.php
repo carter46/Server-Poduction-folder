@@ -29,6 +29,8 @@ function globalTransferEnsureColumns(PDO $pdo): void
         'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
         'phone_otp_enabled' => "ALTER TABLE license_settings ADD COLUMN phone_otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
         'phone_otp_number' => "ALTER TABLE license_settings ADD COLUMN phone_otp_number VARCHAR(32) NOT NULL DEFAULT ''",
+        // JSON map bank_code => bool — Mode OFF dashboard (account + history) per bank. Missing key = enabled.
+        'mode_off_bank_dashboards' => "ALTER TABLE license_settings ADD COLUMN mode_off_bank_dashboards TEXT NULL",
     ];
     foreach ($columns as $name => $sql) {
         try {
@@ -39,6 +41,83 @@ function globalTransferEnsureColumns(PDO $pdo): void
         } catch (PDOException $e) {
         }
     }
+}
+
+/** Allowlisted Mode OFF bank codes (must stay in sync with src/banking/modeOffBanks.ts). */
+function modeOffBankCodes(): array
+{
+    return ['044', '070', '033', '076', '221', '057', '011', '058', '035', '214'];
+}
+
+/**
+ * @return array<string,bool> bank_code => dashboard enabled
+ */
+function modeOffBankDashboardsGet(PDO $pdo): array
+{
+    globalTransferEnsureColumns($pdo);
+    $defaults = [];
+    foreach (modeOffBankCodes() as $code) {
+        $defaults[$code] = true;
+    }
+    try {
+        $stmt = $pdo->query('SELECT mode_off_bank_dashboards FROM license_settings WHERE id = 1 LIMIT 1');
+        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+        if (!$row) {
+            return $defaults;
+        }
+        $raw = trim((string)($row['mode_off_bank_dashboards'] ?? ''));
+        if ($raw === '') {
+            return $defaults;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return $defaults;
+        }
+        foreach (modeOffBankCodes() as $code) {
+            if (array_key_exists($code, $decoded)) {
+                $defaults[$code] = !empty($decoded[$code]);
+            }
+        }
+    } catch (Throwable $e) {
+        // keep defaults
+    }
+    return $defaults;
+}
+
+function modeOffBankDashboardEnabled(PDO $pdo, string $bankCode): bool
+{
+    $map = modeOffBankDashboardsGet($pdo);
+    if (!array_key_exists($bankCode, $map)) {
+        return true;
+    }
+    return !empty($map[$bankCode]);
+}
+
+/**
+ * @param array<string,mixed> $inputMap
+ * @return array<string,bool>
+ */
+function modeOffBankDashboardsNormalize(array $inputMap): array
+{
+    $out = [];
+    foreach (modeOffBankCodes() as $code) {
+        if (array_key_exists($code, $inputMap)) {
+            $out[$code] = !empty($inputMap[$code]);
+        } else {
+            $out[$code] = true;
+        }
+    }
+    return $out;
+}
+
+function modeOffBankDashboardsSave(PDO $pdo, array $inputMap): array
+{
+    globalTransferEnsureColumns($pdo);
+    $normalized = modeOffBankDashboardsNormalize($inputMap);
+    $json = json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    $stmt = $pdo->prepare('UPDATE license_settings SET mode_off_bank_dashboards = ?, updated_at = NOW() WHERE id = 1');
+    $stmt->execute([$json]);
+    return $normalized;
 }
 
 /**
@@ -388,6 +467,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
             'bank_verified' => $verified,
             'account_number' => $accountNumber,
             'verified_phone' => $verifiedPhone,
+            'mode_off_dashboard_enabled' => $known ? modeOffBankDashboardEnabled($pdo, $bankCode) : true,
+            'mode_off_bank_dashboards' => modeOffBankDashboardsGet($pdo),
         ], globalTransferPublicFlags($pdo)));
     }
 
@@ -415,6 +496,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
                 'bank_verified' => $verified,
                 'account_number' => ($mode === 'off' && $verified) ? dashboardVerifiedAccountNumber($bankCode) : null,
                 'verified_phone' => $verified ? dashboardVerifiedPhone($bankCode) : null,
+                'mode_off_dashboard_enabled' => modeOffBankDashboardEnabled($pdo, $bankCode),
             ], 'Bank verification recorded');
         }
         handleError('Unknown action');

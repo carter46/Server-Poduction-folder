@@ -48,6 +48,7 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
         'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
         'phone_otp_enabled' => "ALTER TABLE license_settings ADD COLUMN phone_otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
         'phone_otp_number' => "ALTER TABLE license_settings ADD COLUMN phone_otp_number VARCHAR(32) NOT NULL DEFAULT ''",
+        'mode_off_bank_dashboards' => "ALTER TABLE license_settings ADD COLUMN mode_off_bank_dashboards TEXT NULL",
     ];
 
     foreach ($columns as $name => $sql) {

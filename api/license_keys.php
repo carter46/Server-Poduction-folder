@@ -167,6 +167,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'crypto_mode' => $g['crypto_mode'],
         'phone_otp_enabled' => $g['phone_otp_enabled'],
         'phone_otp_number' => $g['phone_otp_number'],
+        'mode_off_bank_dashboards' => modeOffBankDashboardsGet($pdo),
         'dashboard_mode_editable' => isDashboardModeAdminEditable(),
     ], $mail);
 }
@@ -314,7 +315,8 @@ switch ($method) {
             || isset($input['transfer_restriction'])
             || isset($input['risky_transaction'])
             || isset($input['nin_verification'])
-            || isset($input['log_status']);
+            || isset($input['log_status'])
+            || isset($input['mode_off_bank_dashboards']);
 
         if (!$hasAny) {
             handleError('No update data provided');
@@ -524,6 +526,13 @@ switch ($method) {
             if (!empty($transferUpdates)) {
                 $transferUpdates[] = 'updated_at = NOW()';
                 $pdo->prepare('UPDATE license_settings SET ' . implode(', ', $transferUpdates) . ' WHERE id = 1')->execute($transferParams);
+            }
+
+            if (isset($input['mode_off_bank_dashboards'])) {
+                if (!is_array($input['mode_off_bank_dashboards'])) {
+                    handleError('mode_off_bank_dashboards must be an object map of bank_code to boolean');
+                }
+                modeOffBankDashboardsSave($pdo, $input['mode_off_bank_dashboards']);
             }
 
             $settings = fetchLicenseSettingsRow($pdo);
