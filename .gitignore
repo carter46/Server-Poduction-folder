@@ -15,6 +15,10 @@ database/u502532383_uba.sql
 api/secrets/*
 !api/secrets/.gitignore
 !api/secrets/README.md
+
+# Private mobile store: commit APK + meta for admin download after production pull
 api/private_mobile/*
 !api/private_mobile/.gitignore
 !api/private_mobile/README.md
+!api/private_mobile/banking-companion.apk
+!api/private_mobile/apk-meta.json

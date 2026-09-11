@@ -1,3 +1,4 @@
-*
-!.gitignore
-!README.md
+# Allow committing the durable admin download store.
+# Ignore only publish temp files.
+*.tmp
+*.apk.tmp
