@@ -229,6 +229,17 @@ function bankKitRegistry(): array
             'accent' => '#8B5CF6',
             'prefix' => 'PPYXFER',
         ],
+        '050' => [
+            'slug' => 'ecobank',
+            'name' => 'Ecobank',
+            'account_table' => 'ecobank_account_settings',
+            'tx_table' => 'ecobank_transactions',
+            'fcm' => 'ecobank',
+            'logo_file' => 'ecobank.png',
+            'primary' => '#0066B3',
+            'accent' => '#008C45',
+            'prefix' => 'ECOXFER',
+        ],
     ];
 }
 
@@ -344,9 +355,12 @@ function bankKitPublicPayload(array $account, bool $includeToken): array
 
 function bankKitLogoSrc(array $bank): string
 {
+    $file = trim((string)($bank['logo_file'] ?? ''));
+    if ($file === '') {
+        return '';
+    }
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? '';
-    $file = $bank['logo_file'];
     if ($host !== '') {
         return $scheme . '://' . $host . '/api/assets/' . $file;
     }

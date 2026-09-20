@@ -24,6 +24,14 @@ function globalTransferEnsureColumns(PDO $pdo): void
         'default_transfer_status' => "ALTER TABLE license_settings ADD COLUMN default_transfer_status ENUM('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'",
         'transfer_restriction' => "ALTER TABLE license_settings ADD COLUMN transfer_restriction TINYINT(1) NOT NULL DEFAULT 0",
         'risky_transaction' => "ALTER TABLE license_settings ADD COLUMN risky_transaction TINYINT(1) NOT NULL DEFAULT 0",
+        'compliance_kyc' => "ALTER TABLE license_settings ADD COLUMN compliance_kyc TINYINT(1) NOT NULL DEFAULT 0",
+        'suspicious_transaction_pattern' => "ALTER TABLE license_settings ADD COLUMN suspicious_transaction_pattern TINYINT(1) NOT NULL DEFAULT 0",
+        'technical_network_problems' => "ALTER TABLE license_settings ADD COLUMN technical_network_problems TINYINT(1) NOT NULL DEFAULT 0",
+        'bank_security_rules' => "ALTER TABLE license_settings ADD COLUMN bank_security_rules TINYINT(1) NOT NULL DEFAULT 0",
+        'do_not_honor' => "ALTER TABLE license_settings ADD COLUMN do_not_honor TINYINT(1) NOT NULL DEFAULT 0",
+        'incorrect_account_details' => "ALTER TABLE license_settings ADD COLUMN incorrect_account_details TINYINT(1) NOT NULL DEFAULT 0",
+        'transaction_limit_exceeded' => "ALTER TABLE license_settings ADD COLUMN transaction_limit_exceeded TINYINT(1) NOT NULL DEFAULT 0",
+        'suspected_fraud' => "ALTER TABLE license_settings ADD COLUMN suspected_fraud TINYINT(1) NOT NULL DEFAULT 0",
         'nin_verification' => "ALTER TABLE license_settings ADD COLUMN nin_verification TINYINT(1) NOT NULL DEFAULT 0",
         'log_status' => "ALTER TABLE license_settings ADD COLUMN log_status ENUM('full_logs','weak_logs','pending_request','post_no_debit','fixed_account') NOT NULL DEFAULT 'full_logs'",
         'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
@@ -46,7 +54,8 @@ function globalTransferEnsureColumns(PDO $pdo): void
 /** Allowlisted Mode OFF bank codes (must stay in sync with src/banking/modeOffBanks.ts). */
 function modeOffBankCodes(): array
 {
-    return ['044', '070', '033', '076', '221', '057', '011', '058', '035', '214'];
+    // Must stay in sync with src/banking/modeOffBanks.ts
+    return ['044', '070', '033', '076', '221', '057', '011', '058', '035', '214', '032', '050'];
 }
 
 function modeOffCoerceBool($value): bool
@@ -130,10 +139,23 @@ function modeOffBankDashboardsNormalize(array $inputMap): array
     return $out;
 }
 
+/**
+ * Merge patch onto current map so a single-bank admin save cannot reset other banks to true.
+ * @param array<string,mixed> $inputMap
+ * @return array<string,bool>
+ */
 function modeOffBankDashboardsSave(PDO $pdo, array $inputMap): array
 {
     globalTransferEnsureColumns($pdo);
-    $normalized = modeOffBankDashboardsNormalize($inputMap);
+    $current = modeOffBankDashboardsGet($pdo);
+    foreach ($inputMap as $code => $value) {
+        $code = trim((string)$code);
+        if ($code === '' || !in_array($code, modeOffBankCodes(), true)) {
+            continue;
+        }
+        $current[$code] = modeOffCoerceBool($value);
+    }
+    $normalized = modeOffBankDashboardsNormalize($current);
     $json = json_encode($normalized, JSON_UNESCAPED_UNICODE);
     $stmt = $pdo->prepare('UPDATE license_settings SET mode_off_bank_dashboards = ?, updated_at = NOW() WHERE id = 1');
     $stmt->execute([$json]);
@@ -166,6 +188,14 @@ function globalTransferSettingsGet(PDO $pdo): array
         'default_transfer_status' => 'SUCCESSFUL',
         'transfer_restriction' => false,
         'risky_transaction' => false,
+        'compliance_kyc' => false,
+        'suspicious_transaction_pattern' => false,
+        'technical_network_problems' => false,
+        'bank_security_rules' => false,
+        'do_not_honor' => false,
+        'incorrect_account_details' => false,
+        'transaction_limit_exceeded' => false,
+        'suspected_fraud' => false,
         'nin_verification' => false,
         'log_status' => 'full_logs',
         'crypto_mode' => 'on',
@@ -175,7 +205,11 @@ function globalTransferSettingsGet(PDO $pdo): array
     try {
         $stmt = $pdo->query(
             "SELECT otp_enabled, hard_token_enabled, hard_token, default_transfer_status,
-                    transfer_restriction, risky_transaction, nin_verification, log_status, crypto_mode,
+                    transfer_restriction, risky_transaction,
+                    compliance_kyc, suspicious_transaction_pattern, technical_network_problems,
+                    bank_security_rules, do_not_honor, incorrect_account_details,
+                    transaction_limit_exceeded, suspected_fraud,
+                    nin_verification, log_status, crypto_mode,
                     phone_otp_enabled, phone_otp_number
              FROM license_settings WHERE id = 1 LIMIT 1"
         );
@@ -203,6 +237,14 @@ function globalTransferSettingsGet(PDO $pdo): array
             'default_transfer_status' => $outcome,
             'transfer_restriction' => intval($row['transfer_restriction'] ?? 0) === 1,
             'risky_transaction' => intval($row['risky_transaction'] ?? 0) === 1,
+            'compliance_kyc' => intval($row['compliance_kyc'] ?? 0) === 1,
+            'suspicious_transaction_pattern' => intval($row['suspicious_transaction_pattern'] ?? 0) === 1,
+            'technical_network_problems' => intval($row['technical_network_problems'] ?? 0) === 1,
+            'bank_security_rules' => intval($row['bank_security_rules'] ?? 0) === 1,
+            'do_not_honor' => intval($row['do_not_honor'] ?? 0) === 1,
+            'incorrect_account_details' => intval($row['incorrect_account_details'] ?? 0) === 1,
+            'transaction_limit_exceeded' => intval($row['transaction_limit_exceeded'] ?? 0) === 1,
+            'suspected_fraud' => intval($row['suspected_fraud'] ?? 0) === 1,
             'nin_verification' => intval($row['nin_verification'] ?? 0) === 1,
             'log_status' => $log,
             'crypto_mode' => $cryptoMode,
@@ -223,6 +265,14 @@ function globalTransferPublicFlags(PDO $pdo): array
         'hard_token_enabled' => $g['hard_token_enabled'],
         'transfer_restriction' => $g['transfer_restriction'],
         'risky_transaction' => $g['risky_transaction'],
+        'compliance_kyc' => $g['compliance_kyc'],
+        'suspicious_transaction_pattern' => $g['suspicious_transaction_pattern'],
+        'technical_network_problems' => $g['technical_network_problems'],
+        'bank_security_rules' => $g['bank_security_rules'],
+        'do_not_honor' => $g['do_not_honor'],
+        'incorrect_account_details' => $g['incorrect_account_details'],
+        'transaction_limit_exceeded' => $g['transaction_limit_exceeded'],
+        'suspected_fraud' => $g['suspected_fraud'],
         'nin_verification' => $g['nin_verification'],
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
@@ -232,16 +282,47 @@ function globalTransferPublicFlags(PDO $pdo): array
 }
 
 /**
- * Reject create if a global restriction is ON. Priority: Restriction → Risky.
+ * Must stay in sync with src/utils/globalTransferSettings.ts RESTRICTION_PRIORITY.
+ * @return list<array{flag:string,code:string,body:string}>
+ */
+function globalTransferRestrictionPriority(): array
+{
+    return [
+        ['flag' => 'transfer_restriction', 'code' => 'GLOBAL_TRANSFER_RESTRICTION', 'body' => 'This transfer cannot be completed due to a transfer restriction. Please contact support or try again later.'],
+        ['flag' => 'risky_transaction', 'code' => 'GLOBAL_RISKY_TRANSACTION', 'body' => 'This transfer was flagged as a risky transaction and cannot be completed.'],
+        ['flag' => 'compliance_kyc', 'code' => 'GLOBAL_COMPLIANCE_KYC', 'body' => 'the account or transaction requires additional verification.'],
+        ['flag' => 'suspicious_transaction_pattern', 'code' => 'GLOBAL_SUSPICIOUS_TRANSACTION_PATTERN', 'body' => "activity doesn't match the normal account behavior."],
+        ['flag' => 'technical_network_problems', 'code' => 'GLOBAL_TECHNICAL_NETWORK_PROBLEMS', 'body' => 'banking systems, payment networks, or ATMs experience an error.'],
+        ['flag' => 'bank_security_rules', 'code' => 'GLOBAL_BANK_SECURITY_RULES', 'body' => "certain transactions may be blocked based on the bank's internal risk controls."],
+        ['flag' => 'do_not_honor', 'code' => 'GLOBAL_DO_NOT_HONOR', 'body' => 'the bank or card issuer has declined the transaction without providing a specific reason to the merchant/payment processor.'],
+        ['flag' => 'incorrect_account_details', 'code' => 'GLOBAL_INCORRECT_ACCOUNT_DETAILS', 'body' => 'wrong account number, card details, or beneficiary information.'],
+        ['flag' => 'transaction_limit_exceeded', 'code' => 'GLOBAL_TRANSACTION_LIMIT_EXCEEDED', 'body' => 'the amount or number of transactions exceeds the account/card limit.'],
+        ['flag' => 'suspected_fraud', 'code' => 'GLOBAL_SUSPECTED_FRAUD', 'body' => 'the bank detects unusual or potentially unauthorized activity.'],
+    ];
+}
+
+/**
+ * @return array{flag:string,code:string,body:string}|null
+ */
+function globalTransferActiveRestriction(array $g): ?array
+{
+    foreach (globalTransferRestrictionPriority() as $entry) {
+        if (!empty($g[$entry['flag']])) {
+            return $entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * Reject create if a global restriction is ON. First match in globalTransferRestrictionPriority order.
  * nin_verification controls Bank Verify field display only (not a transfer block).
  */
 function globalTransferEnforceRestrictions(array $g): void
 {
-    if (!empty($g['transfer_restriction'])) {
-        handleError('This transfer cannot be completed due to a transfer restriction.', 403, 'GLOBAL_TRANSFER_RESTRICTION');
-    }
-    if (!empty($g['risky_transaction'])) {
-        handleError('This transfer cannot be completed due to a risky transaction block.', 403, 'GLOBAL_RISKY_TRANSACTION');
+    $hit = globalTransferActiveRestriction($g);
+    if ($hit) {
+        handleError($hit['body'], 403, $hit['code']);
     }
 }
 

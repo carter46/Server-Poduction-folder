@@ -43,6 +43,14 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
         'hard_token_enabled' => "ALTER TABLE license_settings ADD COLUMN hard_token_enabled TINYINT(1) NOT NULL DEFAULT 0",
         'transfer_restriction' => "ALTER TABLE license_settings ADD COLUMN transfer_restriction TINYINT(1) NOT NULL DEFAULT 0",
         'risky_transaction' => "ALTER TABLE license_settings ADD COLUMN risky_transaction TINYINT(1) NOT NULL DEFAULT 0",
+        'compliance_kyc' => "ALTER TABLE license_settings ADD COLUMN compliance_kyc TINYINT(1) NOT NULL DEFAULT 0",
+        'suspicious_transaction_pattern' => "ALTER TABLE license_settings ADD COLUMN suspicious_transaction_pattern TINYINT(1) NOT NULL DEFAULT 0",
+        'technical_network_problems' => "ALTER TABLE license_settings ADD COLUMN technical_network_problems TINYINT(1) NOT NULL DEFAULT 0",
+        'bank_security_rules' => "ALTER TABLE license_settings ADD COLUMN bank_security_rules TINYINT(1) NOT NULL DEFAULT 0",
+        'do_not_honor' => "ALTER TABLE license_settings ADD COLUMN do_not_honor TINYINT(1) NOT NULL DEFAULT 0",
+        'incorrect_account_details' => "ALTER TABLE license_settings ADD COLUMN incorrect_account_details TINYINT(1) NOT NULL DEFAULT 0",
+        'transaction_limit_exceeded' => "ALTER TABLE license_settings ADD COLUMN transaction_limit_exceeded TINYINT(1) NOT NULL DEFAULT 0",
+        'suspected_fraud' => "ALTER TABLE license_settings ADD COLUMN suspected_fraud TINYINT(1) NOT NULL DEFAULT 0",
         'nin_verification' => "ALTER TABLE license_settings ADD COLUMN nin_verification TINYINT(1) NOT NULL DEFAULT 0",
         'log_status' => "ALTER TABLE license_settings ADD COLUMN log_status VARCHAR(32) NOT NULL DEFAULT 'full_logs'",
         'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
@@ -78,6 +86,14 @@ function licensePublicTransferFlags(PDO $pdo): array {
         'hard_token_enabled' => false,
         'transfer_restriction' => false,
         'risky_transaction' => false,
+        'compliance_kyc' => false,
+        'suspicious_transaction_pattern' => false,
+        'technical_network_problems' => false,
+        'bank_security_rules' => false,
+        'do_not_honor' => false,
+        'incorrect_account_details' => false,
+        'transaction_limit_exceeded' => false,
+        'suspected_fraud' => false,
         'nin_verification' => false,
         'log_status' => 'full_logs',
         'crypto_mode' => 'on',
@@ -86,7 +102,11 @@ function licensePublicTransferFlags(PDO $pdo): array {
     ];
     try {
         $stmt = $pdo->query(
-            "SELECT otp_enabled, hard_token_enabled, transfer_restriction, risky_transaction, nin_verification, log_status, crypto_mode, phone_otp_enabled, phone_otp_number
+            "SELECT otp_enabled, hard_token_enabled, transfer_restriction, risky_transaction,
+                    compliance_kyc, suspicious_transaction_pattern, technical_network_problems,
+                    bank_security_rules, do_not_honor, incorrect_account_details,
+                    transaction_limit_exceeded, suspected_fraud,
+                    nin_verification, log_status, crypto_mode, phone_otp_enabled, phone_otp_number
              FROM license_settings WHERE id = 1 LIMIT 1"
         );
         $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
@@ -107,6 +127,14 @@ function licensePublicTransferFlags(PDO $pdo): array {
             'hard_token_enabled' => intval($row['hard_token_enabled'] ?? 0) === 1,
             'transfer_restriction' => intval($row['transfer_restriction'] ?? 0) === 1,
             'risky_transaction' => intval($row['risky_transaction'] ?? 0) === 1,
+            'compliance_kyc' => intval($row['compliance_kyc'] ?? 0) === 1,
+            'suspicious_transaction_pattern' => intval($row['suspicious_transaction_pattern'] ?? 0) === 1,
+            'technical_network_problems' => intval($row['technical_network_problems'] ?? 0) === 1,
+            'bank_security_rules' => intval($row['bank_security_rules'] ?? 0) === 1,
+            'do_not_honor' => intval($row['do_not_honor'] ?? 0) === 1,
+            'incorrect_account_details' => intval($row['incorrect_account_details'] ?? 0) === 1,
+            'transaction_limit_exceeded' => intval($row['transaction_limit_exceeded'] ?? 0) === 1,
+            'suspected_fraud' => intval($row['suspected_fraud'] ?? 0) === 1,
             'nin_verification' => intval($row['nin_verification'] ?? 0) === 1,
             'log_status' => $log,
             'crypto_mode' => $cryptoMode,

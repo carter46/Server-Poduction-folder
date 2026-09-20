@@ -189,13 +189,10 @@ switch ($method) {
                 $pdo->rollBack();
                 handleError('Phone OTP verification is required before this transfer can continue', 403, 'PHONE_OTP_REQUIRED');
             }
-            if (!empty($global['transfer_restriction'])) {
+            $restrictionHit = globalTransferActiveRestriction($global);
+            if ($restrictionHit) {
                 $pdo->rollBack();
-                handleError('This transfer cannot be completed due to a transfer restriction.', 403, 'GLOBAL_TRANSFER_RESTRICTION');
-            }
-            if (!empty($global['risky_transaction'])) {
-                $pdo->rollBack();
-                handleError('This transfer cannot be completed due to a risky transaction block.', 403, 'GLOBAL_RISKY_TRANSACTION');
+                handleError($restrictionHit['body'], 403, $restrictionHit['code']);
             }
             $blocking = ['weak_logs', 'pending_request', 'post_no_debit', 'fixed_account'];
             $log = $global['log_status'] ?? 'full_logs';

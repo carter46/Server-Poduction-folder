@@ -162,6 +162,14 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'default_transfer_status' => $g['default_transfer_status'],
         'transfer_restriction' => $g['transfer_restriction'],
         'risky_transaction' => $g['risky_transaction'],
+        'compliance_kyc' => $g['compliance_kyc'],
+        'suspicious_transaction_pattern' => $g['suspicious_transaction_pattern'],
+        'technical_network_problems' => $g['technical_network_problems'],
+        'bank_security_rules' => $g['bank_security_rules'],
+        'do_not_honor' => $g['do_not_honor'],
+        'incorrect_account_details' => $g['incorrect_account_details'],
+        'transaction_limit_exceeded' => $g['transaction_limit_exceeded'],
+        'suspected_fraud' => $g['suspected_fraud'],
         'nin_verification' => $g['nin_verification'],
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
@@ -314,6 +322,14 @@ switch ($method) {
             || isset($input['default_transfer_status'])
             || isset($input['transfer_restriction'])
             || isset($input['risky_transaction'])
+            || isset($input['compliance_kyc'])
+            || isset($input['suspicious_transaction_pattern'])
+            || isset($input['technical_network_problems'])
+            || isset($input['bank_security_rules'])
+            || isset($input['do_not_honor'])
+            || isset($input['incorrect_account_details'])
+            || isset($input['transaction_limit_exceeded'])
+            || isset($input['suspected_fraud'])
             || isset($input['nin_verification'])
             || isset($input['log_status'])
             || isset($input['mode_off_bank_dashboards']);
@@ -514,6 +530,21 @@ switch ($method) {
             if (isset($input['risky_transaction'])) {
                 $transferUpdates[] = 'risky_transaction = ?';
                 $transferParams[] = $input['risky_transaction'] ? 1 : 0;
+            }
+            foreach ([
+                'compliance_kyc',
+                'suspicious_transaction_pattern',
+                'technical_network_problems',
+                'bank_security_rules',
+                'do_not_honor',
+                'incorrect_account_details',
+                'transaction_limit_exceeded',
+                'suspected_fraud',
+            ] as $restrictionFlag) {
+                if (isset($input[$restrictionFlag])) {
+                    $transferUpdates[] = $restrictionFlag . ' = ?';
+                    $transferParams[] = $input[$restrictionFlag] ? 1 : 0;
+                }
             }
             if (isset($input['nin_verification'])) {
                 $transferUpdates[] = 'nin_verification = ?';
