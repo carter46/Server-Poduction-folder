@@ -51,9 +51,15 @@ switch ($method) {
                 $settings = $stmt->fetch();
             }
             
-            $activePublicKey = $settings['use_live'] ? $settings['live_public_key'] : $settings['test_public_key'];
-            $activeSecretKey = $settings['use_live'] ? $settings['live_secret_key'] : $settings['test_secret_key'];
-            $activeEncryptionKey = $settings['use_live'] ? $settings['live_encryption_key'] : $settings['test_encryption_key'];
+            $preferredPublic = $settings['use_live'] ? $settings['live_public_key'] : $settings['test_public_key'];
+            $fallbackPublic = $settings['use_live'] ? $settings['test_public_key'] : $settings['live_public_key'];
+            $preferredSecret = $settings['use_live'] ? $settings['live_secret_key'] : $settings['test_secret_key'];
+            $fallbackSecret = $settings['use_live'] ? $settings['test_secret_key'] : $settings['live_secret_key'];
+            $preferredEnc = $settings['use_live'] ? $settings['live_encryption_key'] : $settings['test_encryption_key'];
+            $fallbackEnc = $settings['use_live'] ? $settings['test_encryption_key'] : $settings['live_encryption_key'];
+            $activePublicKey = !empty($preferredPublic) ? $preferredPublic : $fallbackPublic;
+            $activeSecretKey = !empty($preferredSecret) ? $preferredSecret : $fallbackSecret;
+            $activeEncryptionKey = !empty($preferredEnc) ? $preferredEnc : $fallbackEnc;
             
             sendResponse(true, [
                 'test_public_key' => $settings['test_public_key'],
@@ -221,9 +227,15 @@ switch ($method) {
             
             $stmt = $pdo->query("SELECT test_public_key, test_secret_key, test_encryption_key, live_public_key, live_secret_key, live_encryption_key, use_live FROM flutterwave_settings ORDER BY id DESC LIMIT 1");
             $settings = $stmt->fetch();
-            $activePublicKey = $settings['use_live'] ? $settings['live_public_key'] : $settings['test_public_key'];
-            $activeSecretKey = $settings['use_live'] ? $settings['live_secret_key'] : $settings['test_secret_key'];
-            $activeEncryptionKey = $settings['use_live'] ? $settings['live_encryption_key'] : $settings['test_encryption_key'];
+            $preferredPublic = $settings['use_live'] ? $settings['live_public_key'] : $settings['test_public_key'];
+            $fallbackPublic = $settings['use_live'] ? $settings['test_public_key'] : $settings['live_public_key'];
+            $preferredSecret = $settings['use_live'] ? $settings['live_secret_key'] : $settings['test_secret_key'];
+            $fallbackSecret = $settings['use_live'] ? $settings['test_secret_key'] : $settings['live_secret_key'];
+            $preferredEnc = $settings['use_live'] ? $settings['live_encryption_key'] : $settings['test_encryption_key'];
+            $fallbackEnc = $settings['use_live'] ? $settings['test_encryption_key'] : $settings['live_encryption_key'];
+            $activePublicKey = !empty($preferredPublic) ? $preferredPublic : $fallbackPublic;
+            $activeSecretKey = !empty($preferredSecret) ? $preferredSecret : $fallbackSecret;
+            $activeEncryptionKey = !empty($preferredEnc) ? $preferredEnc : $fallbackEnc;
             
             sendResponse(true, [
                 'test_public_key' => $settings['test_public_key'],
