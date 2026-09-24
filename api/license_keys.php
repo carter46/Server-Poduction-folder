@@ -176,6 +176,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'phone_otp_enabled' => $g['phone_otp_enabled'],
         'phone_otp_number' => $g['phone_otp_number'],
         'mode_off_bank_dashboards' => modeOffBankDashboardsGet($pdo),
+        'site_name' => siteNameGet($pdo),
         'dashboard_mode_editable' => isDashboardModeAdminEditable(),
     ], $mail);
 }
@@ -332,7 +333,8 @@ switch ($method) {
             || isset($input['suspected_fraud'])
             || isset($input['nin_verification'])
             || isset($input['log_status'])
-            || isset($input['mode_off_bank_dashboards']);
+            || isset($input['mode_off_bank_dashboards'])
+            || array_key_exists('site_name', $input);
 
         if (!$hasAny) {
             handleError('No update data provided');
@@ -564,6 +566,10 @@ switch ($method) {
                     handleError('mode_off_bank_dashboards must be an object map of bank_code to boolean');
                 }
                 modeOffBankDashboardsSave($pdo, $input['mode_off_bank_dashboards']);
+            }
+
+            if (array_key_exists('site_name', $input)) {
+                siteNameSave($pdo, $input['site_name']);
             }
 
             $settings = fetchLicenseSettingsRow($pdo);

@@ -57,6 +57,7 @@ function ensureLicenseSettingsSchema(PDO $pdo) {
         'phone_otp_enabled' => "ALTER TABLE license_settings ADD COLUMN phone_otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
         'phone_otp_number' => "ALTER TABLE license_settings ADD COLUMN phone_otp_number VARCHAR(32) NOT NULL DEFAULT ''",
         'mode_off_bank_dashboards' => "ALTER TABLE license_settings ADD COLUMN mode_off_bank_dashboards TEXT NULL",
+        'site_name' => "ALTER TABLE license_settings ADD COLUMN site_name VARCHAR(80) NOT NULL DEFAULT 'UBAS'",
     ];
 
     foreach ($columns as $name => $sql) {
@@ -163,7 +164,17 @@ if ($method === 'GET') {
                 'software_activated' => 'no',
                 'normal_delay_seconds' => 15,
                 'renewal_delay_seconds' => 25,
+                'site_name' => 'UBAS',
             ], $flags));
+        }
+
+        $siteName = 'UBAS';
+        try {
+            $sn = $pdo->query("SELECT site_name FROM license_settings WHERE id = 1 LIMIT 1");
+            $snRow = $sn ? $sn->fetch(PDO::FETCH_ASSOC) : false;
+            $raw = trim((string)($snRow['site_name'] ?? ''));
+            $siteName = $raw !== '' ? (function_exists('mb_substr') ? mb_substr($raw, 0, 80) : substr($raw, 0, 80)) : 'UBAS';
+        } catch (PDOException $e) {
         }
 
         sendResponse(true, array_merge([
@@ -173,6 +184,7 @@ if ($method === 'GET') {
             'software_activated' => $settings['software_activated'] ?: 'no',
             'normal_delay_seconds' => (int)($settings['normal_delay_seconds'] ?? 15),
             'renewal_delay_seconds' => (int)($settings['renewal_delay_seconds'] ?? 25),
+            'site_name' => $siteName,
         ], $flags));
     } catch (PDOException $e) {
         handleError('Failed to fetch license settings: ' . $e->getMessage(), 500);

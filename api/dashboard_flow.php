@@ -39,6 +39,7 @@ function globalTransferEnsureColumns(PDO $pdo): void
         'phone_otp_number' => "ALTER TABLE license_settings ADD COLUMN phone_otp_number VARCHAR(32) NOT NULL DEFAULT ''",
         // JSON map bank_code => bool — Mode OFF dashboard (account + history) per bank. Missing key = enabled.
         'mode_off_bank_dashboards' => "ALTER TABLE license_settings ADD COLUMN mode_off_bank_dashboards TEXT NULL",
+        'site_name' => "ALTER TABLE license_settings ADD COLUMN site_name VARCHAR(80) NOT NULL DEFAULT 'UBAS'",
     ];
     foreach ($columns as $name => $sql) {
         try {
@@ -49,6 +50,40 @@ function globalTransferEnsureColumns(PDO $pdo): void
         } catch (PDOException $e) {
         }
     }
+}
+
+/** Normalize site display name. Empty → UBAS. Max 80 chars. */
+function siteNameNormalize($raw): string
+{
+    $name = trim(preg_replace('/\s+/u', ' ', (string)$raw) ?? '');
+    if ($name === '') {
+        return 'UBAS';
+    }
+    if (function_exists('mb_substr')) {
+        return mb_substr($name, 0, 80);
+    }
+    return substr($name, 0, 80);
+}
+
+function siteNameGet(PDO $pdo): string
+{
+    globalTransferEnsureColumns($pdo);
+    try {
+        $stmt = $pdo->query("SELECT site_name FROM license_settings WHERE id = 1 LIMIT 1");
+        $row = $stmt ? $stmt->fetch() : false;
+        return siteNameNormalize($row['site_name'] ?? 'UBAS');
+    } catch (PDOException $e) {
+        return 'UBAS';
+    }
+}
+
+function siteNameSave(PDO $pdo, $raw): string
+{
+    $name = siteNameNormalize($raw);
+    globalTransferEnsureColumns($pdo);
+    $stmt = $pdo->prepare('UPDATE license_settings SET site_name = ?, updated_at = NOW() WHERE id = 1');
+    $stmt->execute([$name]);
+    return $name;
 }
 
 /** Allowlisted Mode OFF bank codes (must stay in sync with src/banking/modeOffBanks.ts). */
@@ -570,6 +605,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
             'verified_phone' => $verifiedPhone,
             'mode_off_dashboard_enabled' => $known ? modeOffBankDashboardEnabled($pdo, $bankCode) : true,
             'mode_off_bank_dashboards' => modeOffBankDashboardsGet($pdo),
+            'site_name' => siteNameGet($pdo),
         ], globalTransferPublicFlags($pdo)));
     }
 
