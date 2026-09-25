@@ -455,7 +455,7 @@ function dashboardNormalizePhone(string $phoneNumber): string
     return is_string($digits) ? $digits : '';
 }
 
-function dashboardMarkBankVerified(string $bankCode, string $accountNumber = '', string $phoneNumber = ''): void
+function dashboardMarkBankVerified(string $bankCode, string $accountNumber = '', string $phoneNumber = '', string $accountName = ''): void
 {
     if (!dashboardUserSessionStart()) {
         handleError('Unauthorized. Please login.', 401);
@@ -465,21 +465,29 @@ function dashboardMarkBankVerified(string $bankCode, string $accountNumber = '',
     }
     $digits = dashboardNormalizeAccount($accountNumber);
     $phoneDigits = dashboardNormalizePhone($phoneNumber);
+    $name = trim(preg_replace('/\s+/', ' ', $accountName) ?? '');
+    if (strlen($name) > 120) {
+        $name = substr($name, 0, 120);
+    }
     $existing = $_SESSION['df_verified'][$bankCode] ?? null;
     $prevAcct = '';
     $prevPhone = '';
+    $prevName = '';
     if (is_array($existing)) {
         $prevAcct = dashboardNormalizeAccount((string)($existing['account_number'] ?? ''));
         $prevPhone = dashboardNormalizePhone((string)($existing['phone_number'] ?? ''));
+        $prevName = trim((string)($existing['account_name'] ?? ''));
     }
     $store = strlen($digits) === 10 ? $digits : (strlen($prevAcct) === 10 ? $prevAcct : '');
     $lenPhone = strlen($phoneDigits);
     $storePhone = ($lenPhone >= 10 && $lenPhone <= 11)
         ? $phoneDigits
         : ((strlen($prevPhone) >= 10 && strlen($prevPhone) <= 11) ? $prevPhone : '');
+    $storeName = $name !== '' ? $name : $prevName;
     $_SESSION['df_verified'][$bankCode] = [
         'bank_code' => $bankCode,
         'account_number' => $store,
+        'account_name' => $storeName,
         'phone_number' => $storePhone,
         'at' => time(),
     ];
@@ -536,6 +544,19 @@ function dashboardVerifiedPhone(string $bankCode): ?string
     return ($len >= 10 && $len <= 11) ? $digits : null;
 }
 
+function dashboardVerifiedAccountName(string $bankCode): ?string
+{
+    if (!dashboardBankVerified($bankCode)) {
+        return null;
+    }
+    $row = $_SESSION['df_verified'][$bankCode] ?? null;
+    if (!is_array($row)) {
+        return null;
+    }
+    $name = trim((string)($row['account_name'] ?? ''));
+    return $name !== '' ? $name : null;
+}
+
 /** Clear Mode OFF account prefill after a successful create (one-shot).
  * Keep phone_number so Phone OTP can still display the verify-form number.
  */
@@ -555,6 +576,7 @@ function dashboardConsumeVerifiedPrefill(string $bankCode): void
             $_SESSION['df_verified'][$bankCode] = [
                 'bank_code' => $bankCode,
                 'account_number' => '',
+                'account_name' => '',
                 'phone_number' => $phone,
                 'at' => time(),
             ];
@@ -598,10 +620,12 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
             $accountNumber = dashboardVerifiedAccountNumber($bankCode);
         }
         $verifiedPhone = ($known && $verified) ? dashboardVerifiedPhone($bankCode) : null;
+        $verifiedAccountName = ($mode === 'off' && $verified) ? dashboardVerifiedAccountName($bankCode) : null;
         sendResponse(true, array_merge([
             'dashboard_mode' => $mode,
             'bank_verified' => $verified,
             'account_number' => $accountNumber,
+            'verified_account_name' => $verifiedAccountName,
             'verified_phone' => $verifiedPhone,
             'mode_off_dashboard_enabled' => $known ? modeOffBankDashboardEnabled($pdo, $bankCode) : true,
             'mode_off_bank_dashboards' => modeOffBankDashboardsGet($pdo),
@@ -625,13 +649,15 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
             if ($phoneLen > 0 && ($phoneLen < 10 || $phoneLen > 11)) {
                 handleError('A valid 10–11 digit phone number is required');
             }
-            dashboardMarkBankVerified($bankCode, $digits, $phoneDigits);
+            $accountName = trim((string)($input['account_name'] ?? ''));
+            dashboardMarkBankVerified($bankCode, $digits, $phoneDigits, $accountName);
             $mode = dashboardModeGet($pdo);
             $verified = dashboardBankVerified($bankCode);
             sendResponse(true, [
                 'dashboard_mode' => $mode,
                 'bank_verified' => $verified,
                 'account_number' => ($mode === 'off' && $verified) ? dashboardVerifiedAccountNumber($bankCode) : null,
+                'verified_account_name' => ($mode === 'off' && $verified) ? dashboardVerifiedAccountName($bankCode) : null,
                 'verified_phone' => $verified ? dashboardVerifiedPhone($bankCode) : null,
                 'mode_off_dashboard_enabled' => modeOffBankDashboardEnabled($pdo, $bankCode),
             ], 'Bank verification recorded');

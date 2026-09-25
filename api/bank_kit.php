@@ -308,6 +308,8 @@ function bankKitEnsure(PDO $pdo): void
         polarisAddColumnIfMissing($pdo, $acc, 'otp_intent_hash', 'otp_intent_hash VARCHAR(64) DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $acc, 'otp_verified', 'otp_verified TINYINT(1) NOT NULL DEFAULT 0');
         polarisAddColumnIfMissing($pdo, $acc, 'phone_otp_verified', 'phone_otp_verified TINYINT(1) NOT NULL DEFAULT 0');
+        polarisAddColumnIfMissing($pdo, $acc, 'phone_otp_hash', 'phone_otp_hash VARCHAR(255) DEFAULT NULL');
+        polarisAddColumnIfMissing($pdo, $acc, 'phone_otp_expires_at', 'phone_otp_expires_at DATETIME DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $acc, 'crypto_assets', 'crypto_assets TEXT DEFAULT NULL');
         polarisAddColumnIfMissing($pdo, $acc, 'default_transfer_status', "default_transfer_status ENUM('SUCCESSFUL','PENDING','FAILED') NOT NULL DEFAULT 'SUCCESSFUL'");
         polarisAddColumnIfMissing($pdo, $tx, 'transfer_type', "transfer_type VARCHAR(20) NOT NULL DEFAULT 'bank'");
@@ -373,9 +375,10 @@ function bankKitLogoSrc(array $bank): string
     return '';
 }
 
-function bankKitOtpEmailHtml(array $bank, string $otp, string $logoSrc): string
+function bankKitOtpEmailHtml(array $bank, string $otp, string $logoSrc, string $purpose = 'Transfer Authorization'): string
 {
     $otpEsc = htmlspecialchars($otp, ENT_QUOTES, 'UTF-8');
+    $purposeEsc = htmlspecialchars($purpose, ENT_QUOTES, 'UTF-8');
     $name = htmlspecialchars($bank['name'], ENT_QUOTES, 'UTF-8');
     $accent = htmlspecialchars($bank['accent'], ENT_QUOTES, 'UTF-8');
     $primary = htmlspecialchars($bank['primary'], ENT_QUOTES, 'UTF-8');
@@ -390,7 +393,7 @@ function bankKitOtpEmailHtml(array $bank, string $otp, string $logoSrc): string
 <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
 <tr><td style="background:#ffffff;padding:20px 24px;border-bottom:4px solid ' . $accent . ';">' . $logoBlock . '</td></tr>
 <tr><td style="padding:28px 24px 12px;color:#191c1d;">
-<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:' . $accent . ';">Transfer Authorization</p>
+<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:' . $accent . ';">' . $purposeEsc . '</p>
 <p style="margin:0 0 16px;font-size:14px;color:#4A3A5C;line-height:1.5;">Use this one-time code to authorize your simulated ' . $name . ' transfer. Do not share it with anyone.</p>
 <div style="text-align:center;margin:24px 0;">
 <span style="display:inline-block;letter-spacing:8px;font-size:28px;font-weight:700;color:' . $accent . ';background:#F4F4F4;padding:14px 22px;border-radius:8px;">' . $otpEsc . '</span>

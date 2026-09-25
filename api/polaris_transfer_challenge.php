@@ -43,10 +43,47 @@ if ($action === 'send_phone') {
     if (empty($global['phone_otp_enabled'])) {
         handleError('Phone OTP is not enabled');
     }
+
+    $otp = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $expires = date('Y-m-d H:i:s', time() + 600);
+    $hash = password_hash($otp, PASSWORD_DEFAULT);
+
     $pdo->prepare(
-        "UPDATE polaris_bank_account_settings SET phone_otp_verified = 0, updated_at = NOW() WHERE id = ?"
-    )->execute([$account['id']]);
-    sendResponse(true, ['ok' => true], 'Phone OTP ready');
+        "UPDATE polaris_bank_account_settings
+         SET phone_otp_verified = 0, phone_otp_hash = ?, phone_otp_expires_at = ?, updated_at = NOW()
+         WHERE id = ?"
+    )->execute([$hash, $expires, $account['id']]);
+
+    $clearPhoneOtp = function () use ($pdo, $account) {
+        $pdo->prepare(
+            "UPDATE polaris_bank_account_settings
+             SET phone_otp_hash = NULL, phone_otp_expires_at = NULL, phone_otp_verified = 0, updated_at = NOW()
+             WHERE id = ?"
+        )->execute([$account['id']]);
+    };
+
+    $emails = polarisPurchaseEmails($pdo);
+    if (empty($emails)) {
+        $clearPhoneOtp();
+        handleError('Purchase email is not configured');
+    }
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+    $html = polarisOtpEmailHtml($otp, polarisLogoSrc(), 'Phone Verification');
+    $sent = polarisSendHtmlMail($pdo, $emails, 'Polaris Phone Verification', $html);
+    $via = $sent['sent_via'] ?? null;
+    if (empty($sent['ok']) || ($via !== 'phpmailer' && $via !== 'brevo')) {
+        $clearPhoneOtp();
+        $msg = trim((string)($sent['message'] ?? ''));
+        handleError($msg !== '' ? $msg : 'Could not send Phone OTP email. Check email configuration.');
+    }
+
+    sendResponse(true, [
+        'ok' => true,
+        'expires_in' => 600,
+        'sent_via' => $via,
+    ], 'Phone OTP sent');
 }
 
 if ($action === 'verify_phone') {
@@ -57,8 +94,27 @@ if ($action === 'verify_phone') {
     if (!is_string($otp) || strlen($otp) !== 6) {
         handleError('Invalid OTP');
     }
+
+    $stmt = $pdo->prepare("SELECT phone_otp_hash, phone_otp_expires_at FROM polaris_bank_account_settings WHERE id = ? LIMIT 1");
+    $stmt->execute([$account['id']]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        handleError('Polaris account not configured', 500);
+    }
+
+    $storedHash = (string)($row['phone_otp_hash'] ?? '');
+    $expiresAt = (string)($row['phone_otp_expires_at'] ?? '');
+    if ($storedHash === '' || $expiresAt === '' || strtotime($expiresAt) < time()) {
+        handleError('OTP has expired');
+    }
+    if (!password_verify($otp, $storedHash)) {
+        handleError('Incorrect OTP');
+    }
+
     $pdo->prepare(
-        "UPDATE polaris_bank_account_settings SET phone_otp_verified = 1, updated_at = NOW() WHERE id = ?"
+        "UPDATE polaris_bank_account_settings
+         SET phone_otp_verified = 1, phone_otp_hash = NULL, phone_otp_expires_at = NULL, updated_at = NOW()
+         WHERE id = ?"
     )->execute([$account['id']]);
     sendResponse(true, ['verified' => true], 'Phone OTP verified');
 }
@@ -78,7 +134,7 @@ if ($action === 'send_pre_transfer') {
 
     $stmt = $pdo->prepare(
         "UPDATE polaris_bank_account_settings
-         SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, phone_otp_verified = 0, updated_at = NOW()
+         SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, phone_otp_verified = 0, phone_otp_hash = NULL, phone_otp_expires_at = NULL, updated_at = NOW()
          WHERE id = ?"
     );
     $stmt->execute([$hash, $expires, $challengeId, $preIntentHash, $account['id']]);
@@ -171,7 +227,7 @@ if ($action === 'send') {
 
     $stmt = $pdo->prepare(
         "UPDATE polaris_bank_account_settings
-         SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, phone_otp_verified = 0, updated_at = NOW()
+         SET otp_hash = ?, otp_expires_at = ?, otp_challenge_id = ?, otp_intent_hash = ?, otp_verified = 0, phone_otp_verified = 0, phone_otp_hash = NULL, phone_otp_expires_at = NULL, updated_at = NOW()
          WHERE id = ?"
     );
     $stmt->execute([$hash, $expires, $challengeId, $intentHash, $account['id']]);
