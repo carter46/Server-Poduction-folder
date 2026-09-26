@@ -3,13 +3,15 @@
  * Transfer Uptime Status API
  * Per-bank transfer success tier shown on the uptime page and verify gate modal.
  *
- * - GET: public — all banks, or ?bank_code=044 for one bank
- * - PUT: admin only — set tier for one bank (or banks[] bulk)
+ * - GET: public — { enabled, banks } or ?bank_code=044 → { enabled, bank_code, tier, percent, message }
+ * - PUT: admin only — { enabled? } and/or banks[] / bank_code+tier
  *
  * Tiers (admin selects range; display percent is the top of the range):
  *   bad       → 0–45%   display 45
  *   partial   → 46–85%  display 85
  *   excellent → 86–100% display 100
+ *
+ * Feature master switch (enabled): when off, users do not see uptime UI at all.
  */
 require_once 'config.php';
 
@@ -24,6 +26,25 @@ function transferUptimeEnsureSchema(PDO $pdo): void
             tier ENUM('bad','partial','excellent') NOT NULL DEFAULT 'excellent',
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )");
+    } catch (PDOException $e) {
+        // continue
+    }
+
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS transfer_uptime_feature (
+            id INT PRIMARY KEY,
+            enabled TINYINT(1) NOT NULL DEFAULT 1,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )");
+    } catch (PDOException $e) {
+        // continue
+    }
+
+    try {
+        $stmt = $pdo->query("SELECT id FROM transfer_uptime_feature WHERE id = 1 LIMIT 1");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("INSERT INTO transfer_uptime_feature (id, enabled) VALUES (1, 1)");
+        }
     } catch (PDOException $e) {
         // continue
     }
@@ -53,7 +74,6 @@ function transferUptimeSanitizeBankCode($raw): string
     if ($code === '' || strlen($code) > 32) {
         return '';
     }
-    // Digits-only codes used by the bank catalog (e.g. 044, 090405, 999992)
     if (!preg_match('/^[0-9]{2,32}$/', $code)) {
         return '';
     }
@@ -94,11 +114,33 @@ function transferUptimeRow(string $bankCode, string $tier): array
     ];
 }
 
+function transferUptimeFeatureEnabled(PDO $pdo): bool
+{
+    try {
+        $stmt = $pdo->query("SELECT enabled FROM transfer_uptime_feature WHERE id = 1 LIMIT 1");
+        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+        if (!$row) return true;
+        return (int)($row['enabled'] ?? 1) === 1;
+    } catch (PDOException $e) {
+        return true;
+    }
+}
+
+function transferUptimeSetFeatureEnabled(PDO $pdo, bool $enabled): void
+{
+    $stmt = $pdo->prepare(
+        "INSERT INTO transfer_uptime_feature (id, enabled) VALUES (1, ?)
+         ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP"
+    );
+    $stmt->execute([$enabled ? 1 : 0]);
+}
+
 transferUptimeEnsureSchema($pdo);
 
 switch ($method) {
     case 'GET':
         try {
+            $enabled = transferUptimeFeatureEnabled($pdo);
             $bankCode = transferUptimeSanitizeBankCode($_GET['bank_code'] ?? '');
             $stmt = $pdo->query("SELECT bank_code, tier, updated_at FROM transfer_uptime_status");
             $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -107,28 +149,27 @@ switch ($method) {
             foreach ($rows as $row) {
                 $code = transferUptimeSanitizeBankCode($row['bank_code'] ?? '');
                 if ($code === '' || !isset($known[$code])) {
-                    continue; // ignore junk / legacy rows
+                    continue;
                 }
                 $byCode[$code] = transferUptimeRow($code, $row['tier'] ?? 'excellent');
                 $byCode[$code]['updated_at'] = $row['updated_at'] ?? null;
             }
 
             if ($bankCode !== '') {
-                if (!isset($known[$bankCode])) {
-                    // Unknown code → safe default (do not leak DB shape)
-                    sendResponse(true, transferUptimeRow($bankCode, 'excellent'));
-                }
                 if (isset($byCode[$bankCode])) {
-                    sendResponse(true, $byCode[$bankCode]);
+                    $row = $byCode[$bankCode];
+                } else {
+                    $row = transferUptimeRow($bankCode, 'excellent');
                 }
-                sendResponse(true, transferUptimeRow($bankCode, 'excellent'));
+                $row['enabled'] = $enabled;
+                sendResponse(true, $row);
             }
 
             $out = [];
             foreach (transferUptimeKnownCodes() as $code) {
                 $out[$code] = $byCode[$code] ?? transferUptimeRow($code, 'excellent');
             }
-            sendResponse(true, ['banks' => $out]);
+            sendResponse(true, ['enabled' => $enabled, 'banks' => $out]);
         } catch (PDOException $e) {
             handleError('Failed to fetch transfer uptime status: ' . $e->getMessage(), 500);
         }
@@ -138,6 +179,30 @@ switch ($method) {
         validateAdminSession();
         $input = getJsonInput();
         $known = transferUptimeKnownCodeSet();
+        $didSomething = false;
+        $response = [];
+
+        if (array_key_exists('enabled', $input)) {
+            $raw = $input['enabled'];
+            if (is_bool($raw)) {
+                $enabled = $raw;
+            } elseif (is_int($raw) || is_float($raw)) {
+                $enabled = ((int)$raw) === 1;
+            } else {
+                $v = strtolower(trim((string)$raw));
+                if (!in_array($v, ['on', 'off', '1', '0', 'true', 'false'], true)) {
+                    handleError('Invalid enabled. Expected true/false or on/off.', 400);
+                }
+                $enabled = in_array($v, ['on', '1', 'true'], true);
+            }
+            try {
+                transferUptimeSetFeatureEnabled($pdo, $enabled);
+                $response['enabled'] = $enabled;
+                $didSomething = true;
+            } catch (PDOException $e) {
+                handleError('Failed to update uptime feature flag: ' . $e->getMessage(), 500);
+            }
+        }
 
         $updates = [];
         if (isset($input['banks']) && is_array($input['banks'])) {
@@ -152,7 +217,7 @@ switch ($method) {
                 }
                 $updates[] = ['bank_code' => $code, 'tier' => transferUptimeNormalizeTier($item['tier'])];
             }
-        } else {
+        } elseif (isset($input['bank_code']) || isset($input['tier'])) {
             $code = transferUptimeSanitizeBankCode($input['bank_code'] ?? '');
             if ($code === '' || !isset($known[$code])) {
                 handleError('Invalid bank_code. Must be a known catalog bank.', 400);
@@ -163,31 +228,39 @@ switch ($method) {
             $updates[] = ['bank_code' => $code, 'tier' => transferUptimeNormalizeTier($input['tier'])];
         }
 
-        if (count($updates) === 0) {
-            handleError('No valid bank uptime updates provided.', 400);
-        }
-
-        // Dedupe by bank_code (last wins)
-        $deduped = [];
-        foreach ($updates as $u) {
-            $deduped[$u['bank_code']] = $u;
-        }
-        $updates = array_values($deduped);
-
-        try {
-            $stmt = $pdo->prepare(
-                "INSERT INTO transfer_uptime_status (bank_code, tier) VALUES (?, ?)
-                 ON DUPLICATE KEY UPDATE tier = VALUES(tier), updated_at = CURRENT_TIMESTAMP"
-            );
-            $saved = [];
+        if (count($updates) > 0) {
+            $deduped = [];
             foreach ($updates as $u) {
-                $stmt->execute([$u['bank_code'], $u['tier']]);
-                $saved[] = transferUptimeRow($u['bank_code'], $u['tier']);
+                $deduped[$u['bank_code']] = $u;
             }
-            sendResponse(true, ['updated' => $saved], 'Transfer uptime status updated successfully');
-        } catch (PDOException $e) {
-            handleError('Failed to update transfer uptime status: ' . $e->getMessage(), 500);
+            $updates = array_values($deduped);
+
+            try {
+                $stmt = $pdo->prepare(
+                    "INSERT INTO transfer_uptime_status (bank_code, tier) VALUES (?, ?)
+                     ON DUPLICATE KEY UPDATE tier = VALUES(tier), updated_at = CURRENT_TIMESTAMP"
+                );
+                $saved = [];
+                foreach ($updates as $u) {
+                    $stmt->execute([$u['bank_code'], $u['tier']]);
+                    $saved[] = transferUptimeRow($u['bank_code'], $u['tier']);
+                }
+                $response['updated'] = $saved;
+                $didSomething = true;
+            } catch (PDOException $e) {
+                handleError('Failed to update transfer uptime status: ' . $e->getMessage(), 500);
+            }
         }
+
+        if (!$didSomething) {
+            handleError('Provide enabled and/or bank_code+tier / banks[{bank_code, tier}, ...].', 400);
+        }
+
+        if (!isset($response['enabled'])) {
+            $response['enabled'] = transferUptimeFeatureEnabled($pdo);
+        }
+
+        sendResponse(true, $response, 'Transfer uptime settings updated successfully');
         break;
 
     default:
