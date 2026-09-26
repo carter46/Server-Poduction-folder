@@ -175,6 +175,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'crypto_mode' => $g['crypto_mode'],
         'phone_otp_enabled' => $g['phone_otp_enabled'],
         'phone_otp_number' => $g['phone_otp_number'],
+        'phone_otp_use_custom' => !empty($g['phone_otp_use_custom']),
         'mode_off_bank_dashboards' => modeOffBankDashboardsGet($pdo),
         'site_name' => siteNameGet($pdo),
         'dashboard_mode_editable' => isDashboardModeAdminEditable(),
@@ -319,6 +320,7 @@ switch ($method) {
             || isset($input['otp_enabled'])
             || isset($input['phone_otp_enabled'])
             || array_key_exists('phone_otp_number', $input)
+            || isset($input['phone_otp_use_custom'])
             || isset($input['hard_token_enabled'])
             || isset($input['default_transfer_status'])
             || isset($input['transfer_restriction'])
@@ -508,6 +510,10 @@ switch ($method) {
             if (isset($input['phone_otp_enabled'])) {
                 $transferUpdates[] = 'phone_otp_enabled = ?';
                 $transferParams[] = $input['phone_otp_enabled'] ? 1 : 0;
+            }
+            if (isset($input['phone_otp_use_custom'])) {
+                $transferUpdates[] = 'phone_otp_use_custom = ?';
+                $transferParams[] = $input['phone_otp_use_custom'] ? 1 : 0;
             }
             if (array_key_exists('phone_otp_number', $input)) {
                 $phoneDigits = preg_replace('/\D/', '', (string)$input['phone_otp_number']);

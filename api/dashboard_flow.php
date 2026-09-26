@@ -37,6 +37,7 @@ function globalTransferEnsureColumns(PDO $pdo): void
         'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
         'phone_otp_enabled' => "ALTER TABLE license_settings ADD COLUMN phone_otp_enabled TINYINT(1) NOT NULL DEFAULT 0",
         'phone_otp_number' => "ALTER TABLE license_settings ADD COLUMN phone_otp_number VARCHAR(32) NOT NULL DEFAULT ''",
+        'phone_otp_use_custom' => "ALTER TABLE license_settings ADD COLUMN phone_otp_use_custom TINYINT(1) NOT NULL DEFAULT 0",
         // JSON map bank_code => bool — Mode OFF dashboard (account + history) per bank. Missing key = enabled.
         'mode_off_bank_dashboards' => "ALTER TABLE license_settings ADD COLUMN mode_off_bank_dashboards TEXT NULL",
         'site_name' => "ALTER TABLE license_settings ADD COLUMN site_name VARCHAR(80) NOT NULL DEFAULT 'UBAS'",
@@ -210,7 +211,8 @@ function modeOffBankDashboardsSave(PDO $pdo, array $inputMap): array
  *   log_status:string,
  *   crypto_mode:string,
  *   phone_otp_enabled:bool,
- *   phone_otp_number:string
+ *   phone_otp_number:string,
+ *   phone_otp_use_custom:bool
  * }
  */
 function globalTransferSettingsGet(PDO $pdo): array
@@ -236,6 +238,7 @@ function globalTransferSettingsGet(PDO $pdo): array
         'crypto_mode' => 'on',
         'phone_otp_enabled' => false,
         'phone_otp_number' => '',
+        'phone_otp_use_custom' => false,
     ];
     try {
         $stmt = $pdo->query(
@@ -245,7 +248,7 @@ function globalTransferSettingsGet(PDO $pdo): array
                     bank_security_rules, do_not_honor, incorrect_account_details,
                     transaction_limit_exceeded, suspected_fraud,
                     nin_verification, log_status, crypto_mode,
-                    phone_otp_enabled, phone_otp_number
+                    phone_otp_enabled, phone_otp_number, phone_otp_use_custom
              FROM license_settings WHERE id = 1 LIMIT 1"
         );
         $row = $stmt ? $stmt->fetch() : false;
@@ -285,6 +288,7 @@ function globalTransferSettingsGet(PDO $pdo): array
             'crypto_mode' => $cryptoMode,
             'phone_otp_enabled' => intval($row['phone_otp_enabled'] ?? 0) === 1,
             'phone_otp_number' => $phoneDigits ?: '',
+            'phone_otp_use_custom' => intval($row['phone_otp_use_custom'] ?? 0) === 1,
         ];
     } catch (PDOException $e) {
         return $defaults;
@@ -313,6 +317,7 @@ function globalTransferPublicFlags(PDO $pdo): array
         'crypto_mode' => $g['crypto_mode'],
         'phone_otp_enabled' => $g['phone_otp_enabled'],
         'phone_otp_number' => $g['phone_otp_number'],
+        'phone_otp_use_custom' => $g['phone_otp_use_custom'],
     ];
 }
 
