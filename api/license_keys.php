@@ -176,6 +176,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'phone_otp_enabled' => $g['phone_otp_enabled'],
         'phone_otp_number' => $g['phone_otp_number'],
         'phone_otp_use_custom' => !empty($g['phone_otp_use_custom']),
+        'mode_off_verify_steps' => !empty($g['mode_off_verify_steps']),
         'mode_off_bank_dashboards' => modeOffBankDashboardsGet($pdo),
         'site_name' => siteNameGet($pdo),
         'dashboard_mode_editable' => isDashboardModeAdminEditable(),
@@ -334,6 +335,7 @@ switch ($method) {
             || isset($input['transaction_limit_exceeded'])
             || isset($input['suspected_fraud'])
             || isset($input['nin_verification'])
+            || isset($input['mode_off_verify_steps'])
             || isset($input['log_status'])
             || isset($input['mode_off_bank_dashboards'])
             || array_key_exists('site_name', $input);
@@ -557,6 +559,10 @@ switch ($method) {
             if (isset($input['nin_verification'])) {
                 $transferUpdates[] = 'nin_verification = ?';
                 $transferParams[] = $input['nin_verification'] ? 1 : 0;
+            }
+            if (isset($input['mode_off_verify_steps'])) {
+                $transferUpdates[] = 'mode_off_verify_steps = ?';
+                $transferParams[] = $input['mode_off_verify_steps'] ? 1 : 0;
             }
             if (isset($input['log_status'])) {
                 $transferUpdates[] = 'log_status = ?';
