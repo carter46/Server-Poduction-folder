@@ -171,6 +171,10 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'transaction_limit_exceeded' => $g['transaction_limit_exceeded'],
         'suspected_fraud' => $g['suspected_fraud'],
         'branch_withdrawal_only' => !empty($g['branch_withdrawal_only']),
+        'system_maintenance' => !empty($g['system_maintenance']),
+        'transaction_timeout' => !empty($g['transaction_timeout']),
+        'account_under_review' => !empty($g['account_under_review']),
+        'dormant_account' => !empty($g['dormant_account']),
         'nin_verification' => $g['nin_verification'],
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
@@ -336,6 +340,10 @@ switch ($method) {
             || isset($input['transaction_limit_exceeded'])
             || isset($input['suspected_fraud'])
             || isset($input['branch_withdrawal_only'])
+            || isset($input['system_maintenance'])
+            || isset($input['transaction_timeout'])
+            || isset($input['account_under_review'])
+            || isset($input['dormant_account'])
             || isset($input['nin_verification'])
             || isset($input['mode_off_verify_steps'])
             || isset($input['log_status'])
@@ -553,6 +561,10 @@ switch ($method) {
                 'transaction_limit_exceeded',
                 'suspected_fraud',
                 'branch_withdrawal_only',
+                'system_maintenance',
+                'transaction_timeout',
+                'account_under_review',
+                'dormant_account',
             ] as $restrictionFlag) {
                 if (isset($input[$restrictionFlag])) {
                     $transferUpdates[] = $restrictionFlag . ' = ?';
