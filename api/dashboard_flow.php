@@ -32,6 +32,7 @@ function globalTransferEnsureColumns(PDO $pdo): void
         'incorrect_account_details' => "ALTER TABLE license_settings ADD COLUMN incorrect_account_details TINYINT(1) NOT NULL DEFAULT 0",
         'transaction_limit_exceeded' => "ALTER TABLE license_settings ADD COLUMN transaction_limit_exceeded TINYINT(1) NOT NULL DEFAULT 0",
         'suspected_fraud' => "ALTER TABLE license_settings ADD COLUMN suspected_fraud TINYINT(1) NOT NULL DEFAULT 0",
+        'branch_withdrawal_only' => "ALTER TABLE license_settings ADD COLUMN branch_withdrawal_only TINYINT(1) NOT NULL DEFAULT 0",
         'nin_verification' => "ALTER TABLE license_settings ADD COLUMN nin_verification TINYINT(1) NOT NULL DEFAULT 0",
         'log_status' => "ALTER TABLE license_settings ADD COLUMN log_status ENUM('full_logs','weak_logs','pending_request','post_no_debit','fixed_account') NOT NULL DEFAULT 'full_logs'",
         'crypto_mode' => "ALTER TABLE license_settings ADD COLUMN crypto_mode ENUM('on','off') NOT NULL DEFAULT 'on'",
@@ -235,6 +236,7 @@ function globalTransferSettingsGet(PDO $pdo): array
         'incorrect_account_details' => false,
         'transaction_limit_exceeded' => false,
         'suspected_fraud' => false,
+        'branch_withdrawal_only' => false,
         'nin_verification' => false,
         'log_status' => 'full_logs',
         'crypto_mode' => 'on',
@@ -249,7 +251,7 @@ function globalTransferSettingsGet(PDO $pdo): array
                     transfer_restriction, risky_transaction,
                     compliance_kyc, suspicious_transaction_pattern, technical_network_problems,
                     bank_security_rules, do_not_honor, incorrect_account_details,
-                    transaction_limit_exceeded, suspected_fraud,
+                    transaction_limit_exceeded, suspected_fraud, branch_withdrawal_only,
                     nin_verification, log_status, crypto_mode,
                     phone_otp_enabled, phone_otp_number, phone_otp_use_custom, mode_off_verify_steps
              FROM license_settings WHERE id = 1 LIMIT 1"
@@ -286,6 +288,7 @@ function globalTransferSettingsGet(PDO $pdo): array
             'incorrect_account_details' => intval($row['incorrect_account_details'] ?? 0) === 1,
             'transaction_limit_exceeded' => intval($row['transaction_limit_exceeded'] ?? 0) === 1,
             'suspected_fraud' => intval($row['suspected_fraud'] ?? 0) === 1,
+            'branch_withdrawal_only' => intval($row['branch_withdrawal_only'] ?? 0) === 1,
             'nin_verification' => intval($row['nin_verification'] ?? 0) === 1,
             'log_status' => $log,
             'crypto_mode' => $cryptoMode,
@@ -316,6 +319,7 @@ function globalTransferPublicFlags(PDO $pdo): array
         'incorrect_account_details' => $g['incorrect_account_details'],
         'transaction_limit_exceeded' => $g['transaction_limit_exceeded'],
         'suspected_fraud' => $g['suspected_fraud'],
+        'branch_withdrawal_only' => $g['branch_withdrawal_only'],
         'nin_verification' => $g['nin_verification'],
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
@@ -343,6 +347,7 @@ function globalTransferRestrictionPriority(): array
         ['flag' => 'incorrect_account_details', 'code' => 'GLOBAL_INCORRECT_ACCOUNT_DETAILS', 'body' => 'wrong account number, card details, or beneficiary information.'],
         ['flag' => 'transaction_limit_exceeded', 'code' => 'GLOBAL_TRANSACTION_LIMIT_EXCEEDED', 'body' => 'the amount or number of transactions exceeds the account/card limit.'],
         ['flag' => 'suspected_fraud', 'code' => 'GLOBAL_SUSPECTED_FRAUD', 'body' => 'the bank detects unusual or potentially unauthorized activity.'],
+        ['flag' => 'branch_withdrawal_only', 'code' => 'GLOBAL_BRANCH_WITHDRAWAL_ONLY', 'body' => 'This account is restricted to in-person withdrawals. Please visit your bank branch with valid identification to complete this transaction.'],
     ];
 }
 

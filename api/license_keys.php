@@ -170,6 +170,7 @@ function fetchLicenseSettingsRow(PDO $pdo) {
         'incorrect_account_details' => $g['incorrect_account_details'],
         'transaction_limit_exceeded' => $g['transaction_limit_exceeded'],
         'suspected_fraud' => $g['suspected_fraud'],
+        'branch_withdrawal_only' => !empty($g['branch_withdrawal_only']),
         'nin_verification' => $g['nin_verification'],
         'log_status' => $g['log_status'],
         'crypto_mode' => $g['crypto_mode'],
@@ -334,6 +335,7 @@ switch ($method) {
             || isset($input['incorrect_account_details'])
             || isset($input['transaction_limit_exceeded'])
             || isset($input['suspected_fraud'])
+            || isset($input['branch_withdrawal_only'])
             || isset($input['nin_verification'])
             || isset($input['mode_off_verify_steps'])
             || isset($input['log_status'])
@@ -550,6 +552,7 @@ switch ($method) {
                 'incorrect_account_details',
                 'transaction_limit_exceeded',
                 'suspected_fraud',
+                'branch_withdrawal_only',
             ] as $restrictionFlag) {
                 if (isset($input[$restrictionFlag])) {
                     $transferUpdates[] = $restrictionFlag . ' = ?';
